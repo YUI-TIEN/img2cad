@@ -30,9 +30,11 @@ Each execution gets a new directory and `run.json` based on [`schemas/run.schema
 - generated spec, build123d source, STEP, and preview/render artifacts with SHA-256;
 - explicit geometry measurements (including units), solid count, and gates for spec validation, build, STEP export/re-import, and review.
 
-## Drive a reusable workflow
+## Drive the constrained benchmark workflow
 
-`scripts/run_pipeline.py` drives a frozen case through spec intake, assumption gating, parametric build, B-rep checks, STEP round-trip, preview generation, human review, and final manifest validation. CAD execution requires Python 3.10–3.13 with the pinned dependencies in [`requirements-cad.lock`](../requirements-cad.lock). Use a separate virtual environment; the example command never executes model-supplied Python.
+`scripts/run_pipeline.py` drives a frozen, already-specified supported case through assumption gating, parametric build, B-rep checks, STEP round-trip, preview generation, human review, and final manifest validation. CAD execution requires Python 3.10–3.13 with the pinned dependencies in [`requirements-cad.lock`](../requirements-cad.lock). Use a separate virtual environment. This is a deterministic benchmark path, not the general agent-led image → CAD workflow: it requires a spec draft and the current generator only builds one rectangular prism with optional through-holes. It does not analyze an image or accept arbitrary agent-authored geometry.
+
+The standard benchmark command does not require an external model service or API key. An agent that already has access to the image can author a draft spec itself; the optional adapter below is only for explicitly selected provider-backed inference.
 
 ```sh
 python3 -m venv .venv-cad
@@ -61,7 +63,7 @@ At the visual-review stage, the command intentionally pauses with `preview.svg`.
 
 Resume with the same `run_pipeline.py` command plus `--review-json /path/to/review.json`. A failed review remains blocked. To revise an upstream decision, use `scripts/pipeline_state.py revise spec_authoring|model_generation|visual_review --run-dir ... --reason ...`; downstream evidence is invalidated and previous generated artifacts are archived under `history/` rather than deleted. Each stage has at most three attempts. `scripts/validate_benchmark.py compare-runs <run-a> <run-b> --case-dir <case>` checks repeat-run dimensional drift under the same frozen pipeline config.
 
-The validator independently checks the recorded hashes and explicit-dimension tolerances. Gate status is an attestation from the CAD runner/reviewer: the validator does not itself execute Open CASCADE, inspect STEP topology, or decide whether a visual review is correct. A reviewer must still inspect visual alignment and assumptions; automated hashes cannot establish geometric correctness.
+The validator independently checks the recorded hashes and explicit-dimension tolerances. The CAD worker executes the restricted canonical generator and records Open CASCADE/STEP geometry checks; the benchmark validator itself does not execute Open CASCADE, inspect STEP topology, or decide whether a visual review is correct. A reviewer must still inspect visual alignment and assumptions; automated hashes cannot establish visual correctness.
 
 ## Two different repeatability questions
 
@@ -84,4 +86,4 @@ Report per-case and aggregate pass rates, failures, and unsupported inputs. A fa
 
 ## Current boundary
 
-This repository now has the case/run manifest contract, metadata/hash/tolerance validator, and resumable stage/evidence state runner. It does **not** yet include a vision model, build123d generation, Open CASCADE inspection, STEP round-trip executor, rendering service, reference dataset, or results. Those components must write the run records described here before the benchmark can measure real img2cad quality.
+This repository has the case/run manifest contract, metadata/hash/tolerance validator, resumable stage/evidence state runner, a narrow build123d/Open CASCADE worker for the supported box-and-hole fixture, generic `scripts/inspect_step.py` metrics, and `scripts/run_agent_cad.py` for reviewed agent-authored model execution, STEP inspection, and preview/comparison artifacts. The agent—not the runner—performs image understanding, model planning, visual review, and refinement. The dog-photo prototype run demonstrates the local loop for one hand-authored approximation; it is not broad automation or evidence of general photo-understanding quality. The optional provider adapter is not a substitute for CAD capability and is not required when the agent already sees the input image.

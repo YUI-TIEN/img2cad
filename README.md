@@ -2,44 +2,44 @@
 
 An image-to-parametric-CAD workflow: turn a product image, sketch, or engineering drawing into a reviewable CAD specification, an editable solid model, and validated exchange files such as STEP.
 
-> **Status:** concept / MVP proposal. This repository currently documents the product direction and first workflow; it is not yet an implemented converter.
+> **Status:** early workflow prototype. The repository has an agent skill, a local runner for reviewed agent-authored build123d source, generic STEP inspection and preview generation, plus a constrained spec-to-CAD benchmark runner. The agent still performs image interpretation, model authoring, preview review, and refinement; the local runner handles CAD execution and artifact checks.
 
 ## Problem
 
-Image-to-3D tools can create visually convincing meshes, while CAD-generation tools can create editable solids from text or code. The difficult gap is translating visual evidence into explicit, constrained CAD intent: what parts exist, how they relate, which dimensions are known, and which details are guesses.
+Image-to-3D tools can create visually convincing 3D models, while CAD tools can create editable solids from code. img2cad's intended workflow is for an agent to inspect the image, plan the geometry, author a parametric CAD model, and compare a render with the reference. The difficult gap is making that model both visually faithful and a valid, editable CAD artifact—not choosing a particular vision API.
 
-A single image cannot reveal hidden geometry or true scale. The workflow must expose uncertainty and let a person supply missing dimensions instead of silently presenting a visual guess as manufacturing-ready engineering.
+A single image cannot reveal hidden geometry or true scale. The workflow must expose uncertainty and distinguish an approximate visual model from dimensionally constrained engineering CAD.
 
 ## Product goal
 
-Given one or more images and any available dimensions, help a user produce:
+Given one or more images and optional dimensions, the agent should help a user produce:
 
 1. A structured, inspectable description of the part or assembly.
 2. A native parametric model that can be edited and regenerated.
 3. A valid STEP export, plus preview formats when useful.
 4. Evidence of geometric checks and a visual comparison against the reference.
 
-The primary success criterion is useful, editable CAD—not merely a similar-looking render or a watertight triangle mesh.
+The primary success criterion is a useful CAD artifact whose fidelity and editability are reported honestly. A visually similar organic model and a dimensionally constrained engineering part are both valid targets, but they have different acceptance criteria.
 
 ## Proposed workflow
 
 ```text
 Image(s) + optional measurements
-  → suitability and view assessment
-  → visual observations with confidence / unknowns
-  → editable CAD specification
-  → user confirms critical assumptions and dimensions
-  → generate parametric build123d model
-  → kernel, geometry, and export validation
-  → render from comparable views and review against reference
-  → revise specification or model, then export STEP
+  → agent inspects image using its already-available visual capability
+  → observations, geometry plan, confidence / unknowns
+  → agent authors an editable build123d CAD model
+  → local CAD kernel builds, measures, and exports STEP / preview
+  → compare preview with reference and revise the model
+  → report estimates, checks, and remaining limitations
 ```
+
+No separate third-party vision service or API key is required by this workflow. The optional vision adapter is a separate integration for users who explicitly choose provider-backed inference; it is not the default agent path.
 
 ### 1. Assess the input
 
 Classify the input as a product photo, sketch, or dimensioned drawing. Identify view count, occlusion, perspective, visible scale cues, and whether the target is primarily prismatic/mechanical or organic. If the image is unsuitable or confidence is low, request another view or route the task to manual input.
 
-### 2. Build an `Object2CADSpec`
+### 2. Plan the geometry and record an `Object2CADSpec`
 
 Create a versioned JSON specification before generating geometry. It should record:
 
@@ -50,34 +50,32 @@ Create a versioned JSON specification before generating geometry. It should reco
 - Confidence, assumptions, and unresolved questions per feature/dimension.
 - Manufacturing intent when known (3D print, CNC, sheet metal, or visual prototype).
 
-Keep observed facts separate from inferred geometry. Ask the user only for unknowns that materially change fit, function, or manufacturing.
+Keep observed facts separate from inferred geometry. For a visual prototype, proceed with clearly labeled estimates rather than blocking on engineering dimensions. Ask only when a missing fact materially changes the requested result. The current v1 schema is limited to one rectangular prism and holes; it is a benchmark fixture, not yet a general geometry plan for organic shapes or assemblies.
 
 ### 3. Generate native CAD
 
-Translate the confirmed specification into ordinary, parameterized build123d code using Open CASCADE. Preserve meaningful parameters and feature-level structure so the model can be edited and regenerated. STEP is the primary interchange output; STL/GLB are derived previews, not the source of truth.
+The intended agent path is to author ordinary, parameterized build123d code using Open CASCADE from the image observations and geometry plan. Preserve meaningful parameters and feature-level structure so the model can be edited and regenerated. Organic forms may need lofts, sweeps, or carefully joined solids; a mesh-only result is not equivalent to an editable CAD model. STEP is the primary interchange output; STL/GLB are derived previews, not the source of truth.
 
 ### 4. Validate geometry
 
-Before claiming success, check that the model builds, contains valid positive-volume solids where expected, satisfies explicit dimensions and constraints, and can be exported and re-imported from STEP. Add manufacturability checks only for the chosen process; a successful export alone does not establish engineering correctness.
+Before claiming success, check that the model builds, contains valid positive-volume solids where expected, satisfies any explicit dimensions and constraints, and can be exported and re-imported from STEP. For an approximate visual model, report estimated scale and visual fidelity separately from dimensional validation. Add manufacturability checks only for the chosen process; a successful export alone does not establish engineering correctness.
 
 ### 5. Review and refine
 
-Render the generated CAD from the input camera/view where possible and from a small set of diagnostic views. Compare silhouette, proportions, component placement, and specified feature locations. Use deterministic checks for measurable geometry and a vision model only for visual judgments. Every correction should identify whether it changes the spec, the code, or an assumption.
+Render the generated CAD from the input camera/view where possible and from a small set of diagnostic views. Compare silhouette, proportions, component placement, and specified feature locations using the agent's already-available image capability; this does not imply adding a vision service. Use deterministic checks for measurable geometry. Every correction should identify whether it changes the spec, the code, or an assumption.
 
 ## Design principles
 
 - **CAD-first:** the editable parametric solid is canonical; meshes and renders are derived.
 - **Evidence-aware:** every inferred feature has a confidence and an evidence source.
 - **Human-confirmed constraints:** do not invent scale or hidden dimensions and label them as facts.
-- **Progressive automation:** automate clear, constrained mechanical parts first; route ambiguous cases to questions or a documented best-effort result.
+- **Progressive automation:** support visual organic models and constrained mechanical parts with the right fidelity/measurement criteria for each; route genuinely ambiguous requirements to a question or documented best-effort result.
 - **Reviewable loop:** retain input, spec, generated source, validation results, and revision history together.
-- **Controlled execution:** the deterministic worker runs canonical code generated from a validated spec in an isolated Python interpreter with a timeout. This is not an OS sandbox and must not be used to execute arbitrary model/user-provided Python.
+- **Controlled execution:** review model source before running it. The agent-authored runner restricts Python syntax and build123d API and applies a timeout, but it is **not an OS sandbox**; only execute source you have inspected and trust.
 
 ## MVP scope
 
-Start with single-part, mostly prismatic objects and dimensioned sketches/drawings where dimensions can be read or supplied. Support image upload, spec preview/edit, user confirmation of critical dimensions, build123d generation, STEP validation, and side-by-side visual review.
-
-Defer arbitrary organic objects, automatic recovery of a complete feature tree from any photo, guaranteed hidden-surface reconstruction, and claims of production readiness without process-specific engineering checks.
+Start with the agent-led loop: inspect a user image, plan geometry, author a build123d model, run local checks, inspect a preview, and make a bounded correction. Include both a visual-model case (such as the supplied dog photo) and a dimensioned mechanical case, with different acceptance criteria. Defer guaranteed hidden-surface reconstruction and claims of production readiness without process-specific engineering checks.
 
 ## Relationship to existing projects
 
@@ -86,7 +84,7 @@ Defer arbitrary organic objects, automatic recovery of a complete feature tree f
 - [`sagarshedage7/text-to-cad`](https://github.com/sagarshedage7/text-to-cad) is a small prototype that accepts images and generates build123d/STEP with local vision and language models. It is a useful prior-art and implementation study, not a proven general solution.
 - Raster-to-DXF projects such as [`adityaintwala/Image2CAD`](https://github.com/adityaintwala/Image2CAD) recover 2D entities from CAD drawing images; this is a different task from reconstructing a 3D solid from a product photo.
 
-The proposed contribution is the explicit bridge: image evidence → uncertainty-bearing CAD spec → native parametric model → geometry and visual review.
+The proposed contribution is the agent workflow that bridges image evidence → geometry plan / uncertainty-bearing spec → agent-authored native parametric model → geometry and visual review. Requiring a pre-filled spec and a fixed shape generator is useful for a deterministic fixture, but is not the intended general image-to-CAD interaction.
 
 ## Initial acceptance criteria
 
@@ -101,7 +99,7 @@ For a supported test part with a reference image and known key dimensions:
 
 ## Suggested first prototype
 
-Pick one simple part with a front and side image plus a small set of known dimensions. Use an image-capable model to draft `Object2CADSpec`, let the user confirm unknowns, generate build123d, validate/export STEP, then render and compare. Measure success by dimensional agreement and editability, not only image similarity.
+Use the supplied dog photo as the first visual-model acceptance case: the agent should inspect the image, document estimated/unknown geometry, author a parametric organic CAD approximation, export and check it locally, inspect the preview, and revise once against the image. Keep a separate dimensioned mechanical case to measure exact constraints and STEP round-trip behavior. Neither case requires adding a third-party vision API solely to follow the workflow.
 
 ## Repeatable validation
 
@@ -109,4 +107,4 @@ The benchmark format and first local validation command are defined in [`benchma
 
 ## Agent workflow
 
-The repository-owned agent procedure is [`skills/img2cad/SKILL.md`](skills/img2cad/SKILL.md), routed through [`AGENTS.md`](AGENTS.md). It describes the evidence/assumption gates, local CAD tools, visual review, bounded revision loop, and the optional vision-provider boundary. The workflow is reusable agent guidance; the `scripts/` and schemas implement and record its deterministic gates.
+The repository-owned agent procedure is [`skills/img2cad/SKILL.md`](skills/img2cad/SKILL.md), routed through [`AGENTS.md`](AGENTS.md). For the general path, an image-capable agent authors a parameterized model and uses `scripts/run_agent_cad.py` to execute it locally, export STEP, inspect geometry, and render a preview/comparison. The agent then reviews and revises the model. The separate `scripts/run_pipeline.py` remains a constrained benchmark path requiring a pre-authored spec; its generator only creates a rectangular prism with optional through-holes. The optional vision adapter is not required for an agent that already has image input capability.
