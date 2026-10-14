@@ -71,7 +71,7 @@ Render the generated CAD from the input camera/view where possible and from a sm
 - **Human-confirmed constraints:** do not invent scale or hidden dimensions and label them as facts.
 - **Progressive automation:** automate clear, constrained mechanical parts first; route ambiguous cases to questions or a documented best-effort result.
 - **Reviewable loop:** retain input, spec, generated source, validation results, and revision history together.
-- **Safe execution:** generated model code must run in a constrained worker with resource limits and explicit file boundaries.
+- **Controlled execution:** the deterministic worker runs canonical code generated from a validated spec in an isolated Python interpreter with a timeout. This is not an OS sandbox and must not be used to execute arbitrary model/user-provided Python.
 
 ## MVP scope
 
@@ -106,3 +106,7 @@ Pick one simple part with a front and side image plus a small set of known dimen
 ## Repeatable validation
 
 The benchmark format and first local validation command are defined in [`benchmark/README.md`](benchmark/README.md). The validator checks case/run metadata, input and artifact hashes, required gate records, and whether two runs used the same pipeline configuration before comparing measured dimensions against tolerances. It is a reproducibility scaffold—not a CAD kernel; geometry and STEP round-trip checks must be performed by the CAD runner, with evidence recorded in the run.
+
+## Agent workflow
+
+The repository-owned agent procedure is [`skills/img2cad/SKILL.md`](skills/img2cad/SKILL.md), routed through [`AGENTS.md`](AGENTS.md). It describes the evidence/assumption gates, local CAD tools, visual review, bounded revision loop, and the optional vision-provider boundary. The workflow is reusable agent guidance; the `scripts/` and schemas implement and record its deterministic gates.

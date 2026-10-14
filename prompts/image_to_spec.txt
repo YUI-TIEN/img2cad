@@ -1,0 +1,6 @@
+Analyze the provided orthographic or product images and return one JSON Object2CADSpec object only.
+Do not invent dimensions that are hidden, perspective-distorted, or unsupported by visible evidence.
+For every numeric value, cite an input image and describe the visible cue. Use status=observed or inferred unless a dimension is explicitly drawn or supplied by the user.
+Set confidence from 0 to 1. Put every unresolved feature or dimension in unknowns. Do not claim user confirmation.
+The supported v1 geometry is one mostly-prismatic rectangular part with optional centered-through-axis circular holes; if the object differs, preserve unknowns and do not force-fit it.
+Units are millimeters. Required dimensions are length, width, height. Return keys schema_version=1, case_id, revision, units, input_images, parts, unknowns, and notes. Input image entries must preserve the provided paths, hashes, and view labels.

@@ -10,6 +10,7 @@
     "revision": {"type": "integer", "minimum": 1},
     "task_kind": {"enum": ["photo_to_part", "drawing_to_part", "sketch_to_part"]},
     "supported": {"type": "boolean", "default": true},
+    "input_views": {"type": "object", "additionalProperties": {"enum": ["front", "side", "top", "isometric", "drawing", "unknown"]}},
     "source_files": {
       "type": "array", "minItems": 1,
       "items": {"type": "object", "required": ["role", "path", "sha256"], "properties": {

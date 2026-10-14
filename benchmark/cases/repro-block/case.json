@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "case_id": "repro-block",
+  "revision": 1,
+  "task_kind": "drawing_to_part",
+  "supported": true,
+  "source_files": [
+    {
+      "role": "drawing",
+      "path": "drawing.svg",
+      "sha256": "d411bcac4b9fd271d5454d975849bc69492e095dd224ad003a12d8b3ec475c9f"
+    }
+  ],
+  "requirements": {
+    "units": "mm",
+    "dimensions": [
+      {
+        "name": "length",
+        "value": 20,
+        "tolerance": 0.02,
+        "status": "drawing_dimension"
+      },
+      {
+        "name": "width",
+        "value": 10,
+        "tolerance": 0.02,
+        "status": "drawing_dimension"
+      },
+      {
+        "name": "height",
+        "value": 5,
+        "tolerance": 0.02,
+        "status": "drawing_dimension"
+      }
+    ],
+    "expected_solid_count": 1,
+    "notes": "One centered through-hole of diameter 2 mm; v1 geometry is a rectangular prism."
+  },
+  "required_gates": [
+    "spec_valid",
+    "model_build",
+    "step_roundtrip",
+    "explicit_dimensions",
+    "visual_review"
+  ]
+}

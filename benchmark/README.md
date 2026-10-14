@@ -30,6 +30,37 @@ Each execution gets a new directory and `run.json` based on [`schemas/run.schema
 - generated spec, build123d source, STEP, and preview/render artifacts with SHA-256;
 - explicit geometry measurements (including units), solid count, and gates for spec validation, build, STEP export/re-import, and review.
 
+## Drive a reusable workflow
+
+`scripts/run_pipeline.py` drives a frozen case through spec intake, assumption gating, parametric build, B-rep checks, STEP round-trip, preview generation, human review, and final manifest validation. CAD execution requires Python 3.10–3.13 with the pinned dependencies in [`requirements-cad.lock`](../requirements-cad.lock). Use a separate virtual environment; the example command never executes model-supplied Python.
+
+```sh
+python3 -m venv .venv-cad
+.venv-cad/bin/pip install -r requirements-cad.lock
+python3 -B scripts/run_pipeline.py \
+  benchmark/cases/repro-block benchmark/cases/repro-block/spec.json \
+  benchmark/runs/repro-block-run-001 \
+  --cad-python .venv-cad/bin/python
+```
+
+An optional vision adapter is explicit (no images leave the machine unless this command is run against a configured provider):
+
+```sh
+python3 -B scripts/vision_adapter.py \
+  benchmark/cases/<case-id> /tmp/<case-id>-spec.json \
+  --endpoint https://<approved-provider>/v1 --model <vision-model>
+```
+
+The vision adapter calls an explicitly supplied OpenAI-compatible endpoint, binds the returned spec to frozen image hashes, and stores output locally. It requires `IMG2CAD_VISION_API_KEY`; the key is never printed. Drafts with inferred/observed critical dimensions or unresolved unknowns stop before modeling until a user confirms them or a dimensioned drawing provides evidence. The spec contract is [`object2cad.schema.json`](schemas/object2cad.schema.json); v1 builds one rectangular prism and optional through-holes.
+
+At the visual-review stage, the command intentionally pauses with `preview.svg`. Compare it with the frozen drawing and provide a local JSON review tied to exact hashes:
+
+```json
+{"reviewer":"Wayne","outcome":"pass","findings":"Dimensions and hole placement match the drawing.","preview_sha256":"<sha256>","input_image_hashes":{"drawing.png":"<sha256>"}}
+```
+
+Resume with the same `run_pipeline.py` command plus `--review-json /path/to/review.json`. A failed review remains blocked. To revise an upstream decision, use `scripts/pipeline_state.py revise spec_authoring|model_generation|visual_review --run-dir ... --reason ...`; downstream evidence is invalidated and previous generated artifacts are archived under `history/` rather than deleted. Each stage has at most three attempts. `scripts/validate_benchmark.py compare-runs <run-a> <run-b> --case-dir <case>` checks repeat-run dimensional drift under the same frozen pipeline config.
+
 The validator independently checks the recorded hashes and explicit-dimension tolerances. Gate status is an attestation from the CAD runner/reviewer: the validator does not itself execute Open CASCADE, inspect STEP topology, or decide whether a visual review is correct. A reviewer must still inspect visual alignment and assumptions; automated hashes cannot establish geometric correctness.
 
 ## Two different repeatability questions
@@ -53,4 +84,4 @@ Report per-case and aggregate pass rates, failures, and unsupported inputs. A fa
 
 ## Current boundary
 
-This repository now has the manifest contract and metadata/hash/tolerance validator. It does **not** yet include a vision model, build123d generation, Open CASCADE inspection, STEP round-trip runner, rendering service, reference dataset, or results. Those components must write the run records described here before the benchmark can measure real img2cad quality.
+This repository now has the case/run manifest contract, metadata/hash/tolerance validator, and resumable stage/evidence state runner. It does **not** yet include a vision model, build123d generation, Open CASCADE inspection, STEP round-trip executor, rendering service, reference dataset, or results. Those components must write the run records described here before the benchmark can measure real img2cad quality.

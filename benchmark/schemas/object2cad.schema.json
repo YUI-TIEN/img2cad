@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://img2cad.local/schemas/object2cad.schema.json",
+  "title": "Object2CADSpec",
+  "type": "object",
+  "required": ["schema_version", "case_id", "revision", "units", "input_images", "parts", "unknowns"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "case_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+    "revision": {"type": "integer", "minimum": 1},
+    "units": {"const": "mm"},
+    "input_images": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["path", "sha256", "view"], "properties": {
+      "path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "view": {"enum": ["front", "side", "top", "isometric", "drawing", "unknown"]}
+    }, "additionalProperties": false}},
+    "parts": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["id", "kind", "dimensions", "holes"], "properties": {
+      "id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"}, "kind": {"const": "rectangular_prism"},
+      "dimensions": {"type": "object", "required": ["length", "width", "height"], "additionalProperties": false, "properties": {
+        "length": {"$ref": "#/$defs/measurement"}, "width": {"$ref": "#/$defs/measurement"}, "height": {"$ref": "#/$defs/measurement"}
+      }},
+      "holes": {"type": "array", "items": {"type": "object", "required": ["id", "x", "y", "diameter", "through"], "properties": {
+        "id": {"type": "string"}, "x": {"$ref": "#/$defs/measurement"}, "y": {"$ref": "#/$defs/measurement"}, "diameter": {"$ref": "#/$defs/measurement"}, "through": {"type": "boolean"}
+      }, "additionalProperties": false}}
+    }, "additionalProperties": false}},
+    "unknowns": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"},
+    "adapter": {"type": "object", "required": ["provider_model", "prompt_sha256"], "properties": {
+      "provider_model": {"type": "string"}, "prompt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }, "additionalProperties": false}
+  },
+  "additionalProperties": false,
+  "$defs": {"measurement": {"type": "object", "required": ["value", "status", "confidence", "evidence"], "properties": {
+    "value": {"type": "number"}, "status": {"enum": ["observed", "inferred", "drawing_dimension", "user_confirmed", "unknown"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}, "evidence": {"type": "array", "items": {"oneOf": [
+      {"type": "object", "required": ["type", "image", "description"], "properties": {"type": {"const": "image"}, "image": {"type": "string"}, "description": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+      {"type": "object", "required": ["type", "reference", "description"], "properties": {"type": {"const": "user_confirmation"}, "reference": {"type": "string", "minLength": 1}, "description": {"type": "string", "minLength": 1}}, "additionalProperties": false}
+    ]}}
+  }, "additionalProperties": false}}
+}

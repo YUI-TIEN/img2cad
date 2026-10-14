@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="260" viewBox="0 0 480 260">
+  <rect width="480" height="260" fill="white"/>
+  <text x="24" y="30" font-family="sans-serif" font-size="18">Dimensioned test part — all units mm</text>
+  <rect x="82" y="72" width="240" height="120" fill="#f8f8f8" stroke="#111" stroke-width="2"/>
+  <circle cx="202" cy="132" r="12" fill="white" stroke="#111" stroke-width="2"/>
+  <text x="165" y="222" font-family="sans-serif" font-size="15">Length 20</text>
+  <text x="335" y="137" font-family="sans-serif" font-size="15">Width 10</text>
+  <text x="350" y="177" font-family="sans-serif" font-size="15">Height 5</text>
+  <text x="145" y="58" font-family="sans-serif" font-size="15">Center through-hole Ø2</text>
+</svg>

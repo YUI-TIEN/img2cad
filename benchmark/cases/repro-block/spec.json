@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "case_id": "repro-block",
+  "revision": 1,
+  "units": "mm",
+  "input_images": [
+    {
+      "path": "drawing.svg",
+      "sha256": "d411bcac4b9fd271d5454d975849bc69492e095dd224ad003a12d8b3ec475c9f",
+      "view": "drawing"
+    }
+  ],
+  "parts": [
+    {
+      "id": "main",
+      "kind": "rectangular_prism",
+      "dimensions": {
+        "length": {
+          "value": 20,
+          "status": "drawing_dimension",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "type": "image",
+              "image": "drawing.svg",
+              "description": "drawing annotation for length"
+            }
+          ]
+        },
+        "width": {
+          "value": 10,
+          "status": "drawing_dimension",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "type": "image",
+              "image": "drawing.svg",
+              "description": "drawing annotation for width"
+            }
+          ]
+        },
+        "height": {
+          "value": 5,
+          "status": "drawing_dimension",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "type": "image",
+              "image": "drawing.svg",
+              "description": "drawing annotation for height"
+            }
+          ]
+        }
+      },
+      "holes": [
+        {
+          "id": "center",
+          "x": {
+            "value": 0,
+            "status": "drawing_dimension",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "type": "image",
+                "image": "drawing.svg",
+                "description": "drawing annotation for hole x"
+              }
+            ]
+          },
+          "y": {
+            "value": 0,
+            "status": "drawing_dimension",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "type": "image",
+                "image": "drawing.svg",
+                "description": "drawing annotation for hole y"
+              }
+            ]
+          },
+          "diameter": {
+            "value": 2,
+            "status": "drawing_dimension",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "type": "image",
+                "image": "drawing.svg",
+                "description": "drawing annotation for hole diameter"
+              }
+            ]
+          },
+          "through": true
+        }
+      ]
+    }
+  ],
+  "unknowns": [],
+  "notes": "Reference fixture spec; all dimensions are printed on the test drawing."
+}
