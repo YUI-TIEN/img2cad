@@ -23,6 +23,10 @@ def source_for(
     d = part["dimensions"]
     lengths = {key: float(d[key]["value"]) for key in ("length", "width", "height")}
     holes = part.get("holes", [])
+    hole_profiles = [
+        {"x": float(hole["x"]["value"]), "y": float(hole["y"]["value"]), "r": float(hole["diameter"]["value"]) / 2}
+        for hole in holes
+    ]
     if any(not hole["through"] for hole in holes):
         raise ValueError("v1 supports through-holes only")
     lines = [
@@ -64,21 +68,26 @@ def source_for(
         f"with open({report_name!r}, 'w', encoding='utf-8') as stream:",
         "    json.dump(metrics, stream, indent=2, sort_keys=True)",
         "    stream.write('\\n')",
-        "vertices, triangles = roundtrip.tessellate(0.15, 0.15)",
-        "views = {'front': lambda p: (p.X, p.Z), 'side': lambda p: (p.Y, p.Z), 'top': lambda p: (p.X, p.Y)}",
         "svg = ['<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"900\" height=\"330\" viewBox=\"0 0 900 330\">', '<rect width=\"100%\" height=\"100%\" fill=\"#f5f7fa\"/>']",
-        "for panel, (name, project) in enumerate(views.items()):",
-        "    points = [project(point) for point in vertices]",
-        "    xs, ys = [p[0] for p in points], [p[1] for p in points]",
-        "    span = max(max(xs) - min(xs), max(ys) - min(ys), 1e-9)",
-        "    scale = 205 / span",
+        "views = [('front', LENGTH, HEIGHT, 'x'), ('side', WIDTH, HEIGHT, 'y'), ('top', LENGTH, WIDTH, 'top')]",
+        "for panel, (name, span_x, span_y, projection) in enumerate(views):",
+        "    scale = 205 / max(span_x, span_y)",
         "    ox, oy = panel * 300 + 150, 170",
-        "    ordered = sorted(triangles, key=lambda tri: sum(vertices[i].Z for i in tri))",
-        "    for tri in ordered:",
-        "        pts = [(ox + (points[i][0] - (min(xs) + max(xs)) / 2) * scale, oy - (points[i][1] - (min(ys) + max(ys)) / 2) * scale) for i in tri]",
-        "        poly = ' '.join(f'{x:.2f},{y:.2f}' for x, y in pts)",
-        "        svg.append(f'<polygon points=\"{poly}\" fill=\"#91b6d9\" stroke=\"#29445f\" stroke-width=\"1\"/>')",
-        "    svg.append(f'<text x=\"{panel * 300 + 150}\" y=\"315\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"16\">{name}</text>')",
+        "    left, top = ox - span_x * scale / 2, oy - span_y * scale / 2",
+        "    svg.append(f'<rect x=\"{left:.2f}\" y=\"{top:.2f}\" width=\"{span_x * scale:.2f}\" height=\"{span_y * scale:.2f}\" fill=\"#91b6d9\" stroke=\"#29445f\" stroke-width=\"2\"/>')",
+        f"    for hole in {json.dumps(hole_profiles)}:",
+        "        if projection == 'x':",
+        "            for x in (hole['x'] - hole['r'], hole['x'] + hole['r']):",
+        "                px = ox + x * scale",
+        "                svg.append(f'<line x1=\"{px:.2f}\" y1=\"{top:.2f}\" x2=\"{px:.2f}\" y2=\"{top + span_y * scale:.2f}\" stroke=\"#29445f\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\"/>')",
+        "        elif projection == 'y':",
+        "            for y in (hole['y'] - hole['r'], hole['y'] + hole['r']):",
+        "                py = oy - y * scale",
+        "                svg.append(f'<line x1=\"{left:.2f}\" y1=\"{py:.2f}\" x2=\"{left + span_x * scale:.2f}\" y2=\"{py:.2f}\" stroke=\"#29445f\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\"/>')",
+        "        else:",
+        "            cx, cy = ox + hole['x'] * scale, oy - hole['y'] * scale",
+        "            svg.append(f'<circle cx=\"{cx:.2f}\" cy=\"{cy:.2f}\" r=\"{hole[\"r\"] * scale:.2f}\" fill=\"#f5f7fa\" stroke=\"#29445f\" stroke-width=\"2\"/>')",
+        "    svg.append(f'<text x=\"{ox}\" y=\"315\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"16\">{name}</text>')",
         "svg.append('</svg>')",
         f"with open({preview_name!r}, 'w', encoding='utf-8') as stream:",
         "    stream.write('\\n'.join(svg) + '\\n')",

@@ -62,6 +62,9 @@ class Object2CADSpecTests(unittest.TestCase):
         self.assertIn("BuildPart()", first)
         self.assertIn("Box(LENGTH, WIDTH, HEIGHT", first)
         self.assertIn("Cylinder(1.0", first)
+        self.assertNotIn(".tessellate(", first)
+        self.assertIn("stroke-dasharray", first)
+        self.assertIn("circle cx=", first)
         self.assertNotIn("exec(", first)
 
 
