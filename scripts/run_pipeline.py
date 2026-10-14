@@ -167,7 +167,7 @@ def command(args: argparse.Namespace) -> int:
     if start("run_manifest_validation"):
         final_report = read_json(report_path)
         pipeline = read_json(state_path)["pipeline"]
-        artifact_paths = [("spec", run_dir / "spec.json"), ("model_source", run_dir / "model.py"), ("step", run_dir / "model.step"), ("preview", run_dir / "preview.svg"), ("validation_report", report_path)]
+        artifact_paths = [("spec", run_dir / "spec.json"), ("model_source", run_dir / "model.py"), ("step", run_dir / "model.step"), ("preview", run_dir / "preview.svg"), ("validation_report", report_path), ("visual_review", run_dir / "review.json")]
         manifest = {
             "schema_version": 1,
             "run_id": run_dir.name,

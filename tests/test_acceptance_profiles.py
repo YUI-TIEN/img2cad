@@ -53,12 +53,28 @@ class AcceptanceProfileTests(unittest.TestCase):
             path.write_text(content, encoding="utf-8")
             artifacts.append({"role": role, "path": filename, "sha256": digest(path)})
         dimensions = {item["name"]: item["value"] for item in case["requirements"]["dimensions"]}
+        criteria = [
+            {"id": item["id"], "outcome": "pass", "findings": "fixture"}
+            for item in case["requirements"].get("visual_criteria", [])
+        ] if visual_findings else []
+        source_hashes = {item["path"]: item["sha256"] for item in case["source_files"]}
+        preview_hash = next(item["sha256"] for item in artifacts if item["role"] == "preview")
+        visual_review_path = run_root / "visual_review.json"
+        visual_review_path.write_text(json.dumps({
+            "reviewer": "acceptance-test-fixture",
+            "outcome": "pass",
+            "findings": "Synthetic validator fixture; not a human visual acceptance claim.",
+            "preview_sha256": preview_hash,
+            "input_image_hashes": source_hashes,
+            "criteria": criteria,
+        }), encoding="utf-8")
+        artifacts.append({"role": "visual_review", "path": visual_review_path.name, "sha256": digest(visual_review_path)})
         run = {
             "schema_version": 1,
             "run_id": "acceptance-fixture-001",
             "case_id": case["case_id"],
             "created_at": "2026-10-14T00:00:00Z",
-            "source_hashes": {item["path"]: item["sha256"] for item in case["source_files"]},
+            "source_hashes": source_hashes,
             "pipeline": {
                 "git_commit": "a" * 40,
                 "prompt_sha256": "b" * 64,
@@ -75,10 +91,7 @@ class AcceptanceProfileTests(unittest.TestCase):
                 "reviewer": "acceptance-test-fixture",
                 "outcome": "pass",
                 "findings": "Synthetic validator fixture; not a human visual acceptance claim.",
-                "criteria": [
-                    {"id": criterion["id"], "outcome": "pass", "findings": "fixture"}
-                    for criterion in case["requirements"].get("visual_criteria", [])
-                ] if visual_findings else [],
+                "criteria": criteria,
             },
         }
         (run_root / "run.json").write_text(json.dumps(run), encoding="utf-8")

@@ -137,15 +137,17 @@ def validate_run(run_dir: Path, case_dir: Path) -> tuple[dict[str, Any], dict[st
     artifacts = run.get("artifacts")
     require(isinstance(artifacts, list), "artifacts must be an array")
     roles: set[str] = set()
+    artifacts_by_role: dict[str, list[tuple[dict[str, Any], Path]]] = {}
     for artifact in artifacts:
         require(isinstance(artifact, dict), "each artifact must be an object")
         role, rel, expected = artifact.get("role"), artifact.get("path"), artifact.get("sha256")
-        require(role in {"spec", "model_source", "step", "preview", "validation_report"}, f"invalid artifact role: {role}")
+        require(role in {"spec", "model_source", "step", "preview", "validation_report", "visual_review"}, f"invalid artifact role: {role}")
         require(role not in roles or role == "preview", f"duplicate artifact role: {role}")
         require(isinstance(rel, str) and rel, f"artifact path required for {role}")
         require(isinstance(expected, str) and HEX_256.fullmatch(expected), f"invalid artifact SHA-256 for {rel}")
         require(sha256(safe_file(run_dir, rel)) == expected, f"artifact hash mismatch: {rel}")
         roles.add(role)
+        artifacts_by_role.setdefault(role, []).append((artifact, safe_file(run_dir, rel)))
     require("spec" in roles and "model_source" in roles and "step" in roles, "run must retain spec, model_source, and STEP artifacts")
 
     measurements = run.get("measurements")
@@ -172,6 +174,24 @@ def validate_run(run_dir: Path, case_dir: Path) -> tuple[dict[str, Any], dict[st
         review = run.get("review")
         require(isinstance(review, dict) and isinstance(review.get("reviewer"), str) and bool(review["reviewer"]), "visual review requires a named reviewer")
         require(review.get("outcome") == "pass" and isinstance(review.get("findings"), str), "visual review record must include outcome=pass and findings")
+        require("visual_review" in artifacts_by_role, "visual review must be retained as a hash-verified artifact")
+        visual_doc = read_json(artifacts_by_role["visual_review"][0][1])
+        require(visual_doc.get("reviewer") == review["reviewer"], "reviewer does not match the hash-verified visual review artifact")
+        artifact_verdict = visual_doc.get("outcome", visual_doc.get("verdict"))
+        require(artifact_verdict in {"pass", "acceptable"}, "hash-verified visual review artifact is not accepted")
+
+        declared = {entry["path"]: entry["sha256"] for entry in case["source_files"]}
+        preview_hashes = {item[0]["sha256"] for item in artifacts_by_role.get("preview", [])}
+        if "preview_sha256" in visual_doc:
+            require(visual_doc.get("preview_sha256") in preview_hashes, "visual review is not bound to a run preview")
+            require(visual_doc.get("input_image_hashes") == declared, "visual review source hashes do not match the frozen case")
+        else:
+            report_artifacts = artifacts_by_role.get("validation_report", [])
+            require(bool(report_artifacts), "visual review must bind either the preview/input hashes or a geometry report containing them")
+            require(visual_doc.get("run_report_sha256") in {item[0]["sha256"] for item in report_artifacts}, "visual review is not bound to a hash-verified geometry report")
+            image_hashes = {value for name, value in declared.items() if next((entry["role"] for entry in case["source_files"] if entry["path"] == name), None) in {"input_image", "drawing"}}
+            require(visual_doc.get("reference_sha256") in image_hashes, "visual review reference does not match a frozen image/drawing")
+
         expected_criteria = {item["id"] for item in case["requirements"].get("visual_criteria", [])}
         if expected_criteria:
             evaluations = review.get("criteria")
@@ -186,6 +206,9 @@ def validate_run(run_dir: Path, case_dir: Path) -> tuple[dict[str, Any], dict[st
             for criterion_id, evaluation in observed.items():
                 require(evaluation.get("outcome") == "pass", f"visual criterion {criterion_id} is not accepted")
                 require(isinstance(evaluation.get("findings"), str) and evaluation["findings"].strip(), f"visual criterion {criterion_id} needs reviewer findings")
+            artifact_evaluations = visual_doc.get("criteria")
+            require(isinstance(artifact_evaluations, list), "hash-verified visual review artifact must retain every case criterion")
+            require(artifact_evaluations == review["criteria"], "criterion findings differ from the hash-verified visual review artifact")
     return case, run
 
 

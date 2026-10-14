@@ -17,7 +17,7 @@
       }, "additionalProperties": false
     },
     "artifacts": {"type": "array", "items": {"type": "object", "required": ["role", "path", "sha256"], "properties": {
-      "role": {"enum": ["spec", "model_source", "step", "preview", "validation_report"]}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      "role": {"enum": ["spec", "model_source", "step", "preview", "validation_report", "visual_review"]}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
     }, "additionalProperties": false}},
     "measurements": {"type": "object", "required": ["dimensions", "solid_count"], "properties": {
       "dimensions": {"type": "object", "additionalProperties": {"type": "number"}}, "solid_count": {"type": ["integer", "null"], "minimum": 1}, "volume": {"type": ["number", "null"], "exclusiveMinimum": 0}
