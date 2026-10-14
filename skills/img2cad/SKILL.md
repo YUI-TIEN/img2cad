@@ -19,11 +19,32 @@ Read the project `README.md` for product boundaries. The benchmark runner is a c
 
    ```sh
    .venv-cad/bin/python -B scripts/run_agent_cad.py /path/to/model.py benchmark/runs/<case>-r1 \
-     --reference /path/to/reference.png --cad-python .venv-cad/bin/python
+     --reference /path/to/reference.png --cad-python .venv-cad/bin/python \
+     --reference-view 1,-1,0.7
    ```
 
    Each run directory must be new. The runner copies `model.py`, executes it with the local CAD interpreter, exports `model.step`, inspects STEP validity/solid count/bounds/volume, and creates `preview.png`, optional `comparison.png`, and `run_report.json`. It does not analyze the image or decide whether the model looks right. Independently inspect STEP when needed with `.venv-cad/bin/python -B scripts/inspect_step.py <run-dir>/model.step`. Check B-rep validity, solid count, positive volume, bounding-box dimensions, and any known dimensions. A successful export alone does not prove visual fidelity or manufacturability.
-6. **Render, compare, and revise.** Inspect the generated diagnostic views alongside the reference. Compare silhouette, proportions, component placement, and obvious missed details. Make a bounded correction to the model and regenerate into a fresh run directory; explain whether a change affected geometry, parameters, or an assumption.
+6. **Render, compare, and revise.** Inspect `comparison.png` against the original image. By default the four CAD views are diagnostic, not camera-aligned. When the agent can estimate the photograph's view relative to the model axes, use `--reference-view x,y,z` to replace the isometric panel with a manually oriented view. This does not estimate camera intrinsics or prove alignment; state residual perspective mismatch in `source_view`. Compare silhouette, proportions, component placement, and obvious missed details. Write review notes as JSON with `reviewer` (`agent` or `human`), `verdict` (`revise`, `acceptable`, or `blocked`), `source_view`, and lists of `matches`, `mismatches`, `next_changes`, and `assumptions`. For a correction, specify what geometry/parameter/assumption changes and run a different model source into a fresh directory. Record each review:
+
+   ```json
+   {
+     "reviewer": "agent",
+     "verdict": "revise",
+     "source_view": "Photo front-right; CAD isometric is approximate, not camera-aligned",
+     "matches": ["Main body silhouette is recognizable"],
+     "mismatches": ["Front opening is too small"],
+     "next_changes": ["Increase the opening-width parameter"],
+     "assumptions": ["Hidden rear geometry is estimated"]
+   }
+   ```
+
+   ```sh
+   python3 -B scripts/record_visual_review.py benchmark/runs/<case>-r1 /path/to/r1-notes.json
+   python3 -B scripts/record_visual_review.py benchmark/runs/<case>-r2 /path/to/r2-notes.json \
+     --previous benchmark/runs/<case>-r1
+   ```
+
+   The command verifies that every run artifact still matches its hash, the reference image is unchanged, the model source changed between revisions, and r1 has a `revise` verdict. It creates `visual_review.json` once; it does not score visual similarity or validate the reviewer's judgment. `run_report.json`'s `passed` means geometry/STEP only. If a source image is unavailable, do not invent a visual review or claim image-to-CAD acceptance.
 7. **Report evidence and limits.** Provide the CAD source and STEP, plus a preview where available. Separate observed appearance, estimated dimensions, geometry/STEP checks, and human visual acceptance. Do not call a visual approximation dimensionally accurate or manufacturing-ready without the corresponding evidence.
 
 ## Current implementation boundary
@@ -33,6 +54,7 @@ The general agent-led loop is now supported by a local execution/review-artifact
 - `scripts/run_pipeline.py` requires a pre-authored spec draft; it does not infer geometry from the supplied image.
 - `scripts/cad_worker.py` calls the restricted deterministic generator, which supports one rectangular prism and optional circular through-holes. It remains for the constrained benchmark, not arbitrary image-derived geometry.
 - `scripts/run_agent_cad.py` executes reviewed agent-authored build123d source and produces STEP, independent geometry metrics, PNG preview, and optional side-by-side image. Its AST/API restrictions and timeout reduce accidental misuse but do not provide OS-level isolation.
+- `scripts/record_visual_review.py` binds a qualitative review and revision link to the exact run artifacts. It does not infer visual correctness or prove human acceptance.
 - `scripts/inspect_step.py` independently imports an existing STEP file and reports generic B-rep/solid/bounds/volume metrics.
 - The benchmark fixtures prove only their declared constrained cases; a passing block case does not prove photo understanding or organic modeling.
 

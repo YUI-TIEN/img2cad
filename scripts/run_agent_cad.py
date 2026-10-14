@@ -35,7 +35,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def raster_preview(step_path: Path, output_path: Path, tolerance: float) -> None:
+def raster_preview(step_path: Path, output_path: Path, tolerance: float, reference_view: tuple[float, float, float] | None = None) -> None:
     shape = import_step(str(step_path))
     vertices, triangles = shape.tessellate(tolerance, 0.12)
     coords = np.array([(float(p.X), float(p.Y), float(p.Z)) for p in vertices], dtype=np.float64)
@@ -52,6 +52,16 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float) -> None
         ("Top · X/Y", (0, 0, 1), (1, 0, 0), (0, 1, 0)),
         ("Isometric", (inv_sqrt3, -inv_sqrt3, inv_sqrt3), (inv_sqrt2, inv_sqrt2, 0), (-inv_sqrt6, inv_sqrt6, 2 * inv_sqrt6)),
     ]
+    if reference_view is not None:
+        direction = np.asarray(reference_view, dtype=np.float64)
+        direction /= np.linalg.norm(direction)
+        world_up = np.array((0.0, 0.0, 1.0))
+        if abs(float(np.dot(direction, world_up))) > 0.98:
+            world_up = np.array((0.0, 1.0, 0.0))
+        screen_right = np.cross(world_up, direction)
+        screen_right /= np.linalg.norm(screen_right)
+        screen_up = np.cross(direction, screen_right)
+        views[-1] = ("Manual reference view", tuple(direction), tuple(screen_right), tuple(screen_up))
     width, height = 1280, 900
     image = Image.new("RGB", (width, height), "#f3f6fa")
     draw = ImageDraw.Draw(image)
@@ -191,7 +201,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if inspection["status"] != "passed":
         raise RuntimeError("STEP inspection failed: B-rep invalid or no positive-volume solid")
     preview_path = run_dir / "preview.png"
-    raster_preview(step_path, preview_path, args.mesh_tolerance)
+    raster_preview(step_path, preview_path, args.mesh_tolerance, args.reference_view)
 
     reference_path = args.reference.expanduser().resolve() if args.reference else None
     if reference_path:
@@ -211,6 +221,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     report: dict[str, Any] = {
         "schema_version": 1,
         "status": "passed",
+        "status_scope": "geometry_and_step_only",
+        "visual_review": "not_reviewed",
+        "reference_view": {"direction": args.reference_view, "alignment": "manual_approximation"} if args.reference_view else None,
         "model_source": {"path": local_source.name, "sha256": sha256(local_source)},
         "step": {"path": step_path.name, "sha256": sha256(step_path)},
         "preview": {"path": preview_path.name, "sha256": sha256(preview_path)},
@@ -234,10 +247,13 @@ def main() -> int:
     parser.add_argument("--cad-python", default=sys.executable, help="Python interpreter with build123d and Pillow installed")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--mesh-tolerance", type=float, default=0.45)
+    parser.add_argument("--reference-view", type=lambda raw: tuple(float(value) for value in raw.split(",")), help="manual model-to-camera direction x,y,z; replaces isometric panel")
     args = parser.parse_args()
     try:
         if not math.isfinite(args.mesh_tolerance) or args.mesh_tolerance <= 0:
             raise ValueError("--mesh-tolerance must be positive")
+        if args.reference_view is not None and (len(args.reference_view) != 3 or not all(math.isfinite(value) for value in args.reference_view) or sum(value * value for value in args.reference_view) <= 0):
+            raise ValueError("--reference-view must be three finite, nonzero comma-separated direction values")
         report = run(args)
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0

@@ -79,10 +79,7 @@ Start with the agent-led loop: inspect a user image, plan geometry, author a bui
 
 ## Relationship to existing projects
 
-- [`earthtojake/text-to-cad`](https://github.com/earthtojake/text-to-cad) is a CAD-generation and local-review workflow built around build123d/Open CASCADE and exports such as STEP. It is a useful candidate for the CAD backend and project conventions.
-- [`img2threejs/img2threejs`](https://github.com/img2threejs/img2threejs) demonstrates staged image analysis, structured specs, render-and-review passes, and bounded correction. Its generated Three.js model is a visual/interactive output, not a parametric CAD solid; treat it as a workflow reference rather than a geometry converter.
-- [`sagarshedage7/text-to-cad`](https://github.com/sagarshedage7/text-to-cad) is a small prototype that accepts images and generates build123d/STEP with local vision and language models. It is a useful prior-art and implementation study, not a proven general solution.
-- Raster-to-DXF projects such as [`adityaintwala/Image2CAD`](https://github.com/adityaintwala/Image2CAD) recover 2D entities from CAD drawing images; this is a different task from reconstructing a 3D solid from a product photo.
+The original concept combines **img2threejs**' staged image inspection and render/revise loop with **txt2cad**'s CAD modeling/output direction. The exact upstream repository identity of `txt2cad` has not been verified; do not equate it with a similarly named GitHub repository. These are conceptual inputs, not claims that this repository imports their code or reproduces their implementation.
 
 The proposed contribution is the agent workflow that bridges image evidence → geometry plan / uncertainty-bearing spec → agent-authored native parametric model → geometry and visual review. Requiring a pre-filled spec and a fixed shape generator is useful for a deterministic fixture, but is not the intended general image-to-CAD interaction.
 
@@ -99,7 +96,7 @@ For a supported test part with a reference image and known key dimensions:
 
 ## Suggested first prototype
 
-Use the supplied dog photo as the first visual-model acceptance case: the agent should inspect the image, document estimated/unknown geometry, author a parametric organic CAD approximation, export and check it locally, inspect the preview, and revise once against the image. Keep a separate dimensioned mechanical case to measure exact constraints and STEP round-trip behavior. Neither case requires adding a third-party vision API solely to follow the workflow.
+Use a supplied dog photo as an initial visual-model acceptance case: the agent should inspect the image, document estimated/unknown geometry, author a parametric organic CAD approximation, export and check it locally, inspect the preview, and revise once against the image. The reusable procedure and review record matter; a particular user's photo does not need to be committed to this repository. Keep a separate dimensioned mechanical case to measure exact constraints and STEP round-trip behavior. Neither case requires adding a third-party vision API solely to follow the workflow.
 
 ## Repeatable validation
 
@@ -107,4 +104,4 @@ The benchmark format and first local validation command are defined in [`benchma
 
 ## Agent workflow
 
-The repository-owned agent procedure is [`skills/img2cad/SKILL.md`](skills/img2cad/SKILL.md), routed through [`AGENTS.md`](AGENTS.md). For the general path, an image-capable agent authors a parameterized model and uses `scripts/run_agent_cad.py` to execute it locally, export STEP, inspect geometry, and render a preview/comparison. The agent then reviews and revises the model. The separate `scripts/run_pipeline.py` remains a constrained benchmark path requiring a pre-authored spec; its generator only creates a rectangular prism with optional through-holes. The optional vision adapter is not required for an agent that already has image input capability.
+The repository-owned agent procedure is [`skills/img2cad/SKILL.md`](skills/img2cad/SKILL.md), routed through [`AGENTS.md`](AGENTS.md). For the general path, an image-capable agent authors a parameterized model and uses `scripts/run_agent_cad.py` to execute it locally, export STEP, inspect geometry, and render a preview/comparison. An optional manual camera direction can replace the generic isometric preview; it is not automatic photo alignment. `run_report.json` records **geometry/STEP success only**, never visual fidelity. After inspecting the comparison, the agent records a hash-bound assessment with `scripts/record_visual_review.py`; a correction is a fresh run linked to the previous reviewed run. The review record preserves the declared reviewer and notes but cannot independently prove a human inspected or accepted the image. The separate `scripts/run_pipeline.py` remains a constrained benchmark path requiring a pre-authored spec; its generator only creates a rectangular prism with optional through-holes. The optional vision adapter is not required for an agent that already has image input capability.
