@@ -102,3 +102,7 @@ For a supported test part with a reference image and known key dimensions:
 ## Suggested first prototype
 
 Pick one simple part with a front and side image plus a small set of known dimensions. Use an image-capable model to draft `Object2CADSpec`, let the user confirm unknowns, generate build123d, validate/export STEP, then render and compare. Measure success by dimensional agreement and editability, not only image similarity.
+
+## Repeatable validation
+
+The benchmark format and first local validation command are defined in [`benchmark/README.md`](benchmark/README.md). The validator checks case/run metadata, input and artifact hashes, required gate records, and whether two runs used the same pipeline configuration before comparing measured dimensions against tolerances. It is a reproducibility scaffold—not a CAD kernel; geometry and STEP round-trip checks must be performed by the CAD runner, with evidence recorded in the run.

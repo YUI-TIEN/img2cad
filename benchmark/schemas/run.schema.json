@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://img2cad.local/schemas/run.schema.json",
+  "title": "img2cad benchmark run",
+  "type": "object",
+  "required": ["schema_version", "run_id", "case_id", "created_at", "source_hashes", "pipeline", "artifacts", "measurements", "gates"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"},
+    "case_id": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source_hashes": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "pipeline": {
+      "type": "object", "required": ["git_commit", "prompt_sha256", "provider", "model", "model_version", "temperature", "seed"], "properties": {
+        "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "prompt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "provider": {"type": "string", "minLength": 1}, "model": {"type": "string", "minLength": 1}, "model_version": {"type": "string", "minLength": 1}, "temperature": {"type": ["number", "null"]}, "seed": {"type": ["integer", "null"]}
+      }, "additionalProperties": false
+    },
+    "artifacts": {"type": "array", "items": {"type": "object", "required": ["role", "path", "sha256"], "properties": {
+      "role": {"enum": ["spec", "model_source", "step", "preview", "validation_report"]}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }, "additionalProperties": false}},
+    "measurements": {"type": "object", "required": ["dimensions", "solid_count"], "properties": {
+      "dimensions": {"type": "object", "additionalProperties": {"type": "number"}}, "solid_count": {"type": ["integer", "null"], "minimum": 1}, "volume": {"type": ["number", "null"], "exclusiveMinimum": 0}
+    }, "additionalProperties": false},
+    "gates": {"type": "object", "additionalProperties": {"enum": ["passed", "failed", "not_run", "not_applicable"]}},
+    "review": {"type": "object", "required": ["reviewer", "outcome", "findings"], "properties": {
+      "reviewer": {"type": "string", "minLength": 1}, "outcome": {"enum": ["pass", "fail"]}, "findings": {"type": "string"}
+    }, "additionalProperties": false}
+  },
+  "additionalProperties": false
+}
