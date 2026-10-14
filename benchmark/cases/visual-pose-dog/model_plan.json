@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "target": "Illustrated standing dog figurine; visual-approximation case",
+  "reference_kind": "synthetic side-view illustration, not a photograph",
+  "observed": [
+    {"feature": "elongated torso", "evidence": "dog-reference.png; broad, low oval silhouette"},
+    {"feature": "raised head and short muzzle", "evidence": "dog-reference.png; head at the forward upper end"},
+    {"feature": "four legs", "evidence": "dog-reference.png; two visible below the torso, far pair partly occluded"},
+    {"feature": "rear tail", "evidence": "dog-reference.png; raised behind the torso"}
+  ],
+  "inferred": ["hidden-side depth and exact joins between body components"],
+  "unknowns": ["physical scale", "back-side appearance", "manufacturing process"],
+  "geometry_plan": ["separate positive-volume body, head, muzzle, ear, tail and leg solids", "judge proportions and placement from the side view", "do not claim dimensional accuracy or manufacturability"]
+}

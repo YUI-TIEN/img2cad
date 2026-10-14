@@ -24,7 +24,10 @@
     }, "additionalProperties": false},
     "gates": {"type": "object", "additionalProperties": {"enum": ["passed", "failed", "not_run", "not_applicable"]}},
     "review": {"type": "object", "required": ["reviewer", "outcome", "findings"], "properties": {
-      "reviewer": {"type": "string", "minLength": 1}, "outcome": {"enum": ["pass", "fail"]}, "findings": {"type": "string"}
+      "reviewer": {"type": "string", "minLength": 1}, "outcome": {"enum": ["pass", "fail"]}, "findings": {"type": "string"},
+      "criteria": {"type": "array", "items": {"type": "object", "required": ["id", "outcome", "findings"], "properties": {
+        "id": {"type": "string"}, "outcome": {"enum": ["pass", "fail"]}, "findings": {"type": "string", "minLength": 1}
+      }, "additionalProperties": false}}
     }, "additionalProperties": false}
   },
   "additionalProperties": false

@@ -15,7 +15,7 @@ from typing import Any
 
 
 HEX_256 = re.compile(r"^[a-f0-9]{64}$")
-REQUIRED_GATES = {"spec_valid", "model_build", "step_roundtrip", "explicit_dimensions", "visual_review"}
+ALLOWED_GATES = {"spec_valid", "model_build", "step_roundtrip", "explicit_dimensions", "visual_review"}
 
 
 class ValidationError(Exception):
@@ -60,7 +60,7 @@ def validate_case(case_dir: Path) -> dict[str, Any]:
     require(case.get("schema_version") == 1, "case schema_version must be 1")
     require(bool(re.fullmatch(r"[a-z0-9][a-z0-9._-]*", str(case.get("case_id", "")))), "case_id must be lowercase kebab/snake-safe text")
     require(isinstance(case.get("revision"), int) and case["revision"] >= 1, "revision must be an integer >= 1")
-    require(case.get("task_kind") in {"photo_to_part", "drawing_to_part", "sketch_to_part"}, "unsupported task_kind")
+    require(case.get("task_kind") in {"photo_to_part", "visual_reference_to_part", "drawing_to_part", "sketch_to_part"}, "unsupported task_kind")
     files = case.get("source_files")
     require(isinstance(files, list) and bool(files), "source_files must be a non-empty array")
     source_hashes: dict[str, str] = {}
@@ -89,9 +89,26 @@ def validate_case(case_dir: Path) -> dict[str, Any]:
         require(isinstance(tolerance, (int, float)) and math.isfinite(tolerance) and tolerance >= 0, f"dimension {name} tolerance must be finite and >= 0")
         require(dim.get("status") in {"user_confirmed", "drawing_dimension", "reference_measurement"}, f"dimension {name} needs a grounded status")
         names.add(name)
+    visual_criteria = req.get("visual_criteria", [])
+    require(isinstance(visual_criteria, list), "requirements.visual_criteria must be an array")
+    criterion_ids: set[str] = set()
+    for criterion in visual_criteria:
+        require(isinstance(criterion, dict), "each visual criterion must be an object")
+        criterion_id, description = criterion.get("id"), criterion.get("description")
+        require(isinstance(criterion_id, str) and criterion_id and criterion_id not in criterion_ids, f"visual criterion id missing or duplicated: {criterion_id}")
+        require(isinstance(description, str) and description.strip(), f"visual criterion {criterion_id} needs a description")
+        criterion_ids.add(criterion_id)
+    require(bool(dimensions or visual_criteria), "case needs at least one explicit dimension or visual criterion")
     gates = case.get("required_gates")
     require(isinstance(gates, list) and bool(gates), "required_gates must be a non-empty array")
-    require(set(gates) <= REQUIRED_GATES and len(set(gates)) == len(gates), "required_gates contains an unknown or duplicate gate")
+    require(set(gates) <= ALLOWED_GATES and len(set(gates)) == len(gates), "required_gates contains an unknown or duplicate gate")
+    require({"model_build", "step_roundtrip", "visual_review"} <= set(gates), "all cases require model_build, step_roundtrip, and visual_review gates")
+    if dimensions:
+        require("explicit_dimensions" in gates, "dimensioned cases require the explicit_dimensions gate")
+    else:
+        require("explicit_dimensions" not in gates, "visual-only cases must not claim an explicit_dimensions gate")
+    if visual_criteria:
+        require("visual_review" in gates, "visual criteria require the visual_review gate")
     return case
 
 
@@ -155,6 +172,20 @@ def validate_run(run_dir: Path, case_dir: Path) -> tuple[dict[str, Any], dict[st
         review = run.get("review")
         require(isinstance(review, dict) and isinstance(review.get("reviewer"), str) and bool(review["reviewer"]), "visual review requires a named reviewer")
         require(review.get("outcome") == "pass" and isinstance(review.get("findings"), str), "visual review record must include outcome=pass and findings")
+        expected_criteria = {item["id"] for item in case["requirements"].get("visual_criteria", [])}
+        if expected_criteria:
+            evaluations = review.get("criteria")
+            require(isinstance(evaluations, list), "visual review must evaluate each case visual criterion")
+            observed: dict[str, dict[str, Any]] = {}
+            for evaluation in evaluations:
+                require(isinstance(evaluation, dict), "each visual criterion evaluation must be an object")
+                criterion_id = evaluation.get("id")
+                require(isinstance(criterion_id, str) and criterion_id not in observed, f"visual review criterion missing or duplicated: {criterion_id}")
+                observed[criterion_id] = evaluation
+            require(observed.keys() == expected_criteria, "visual review criteria must exactly match the case criteria")
+            for criterion_id, evaluation in observed.items():
+                require(evaluation.get("outcome") == "pass", f"visual criterion {criterion_id} is not accepted")
+                require(isinstance(evaluation.get("findings"), str) and evaluation["findings"].strip(), f"visual criterion {criterion_id} needs reviewer findings")
     return case, run
 
 

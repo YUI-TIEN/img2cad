@@ -72,18 +72,24 @@ The validator independently checks the recorded hashes and explicit-dimension to
 
 Do not compare runs when the case inputs or pipeline configuration differ. To evaluate model variability, make a separate multi-seed study: pin the model/version/prompt, vary only the seed, and report pass rate plus metric spread. Do not blend that study with exact deterministic reruns.
 
+## Acceptance profiles
+
+The frozen cases define two distinct success criteria. The dimensioned `repro-block` requires `explicit_dimensions`; the visual `visual-pose-dog` requires three criterion-level review findings and deliberately has no dimension gate. Every case requires model build, STEP round-trip, and visual review. The validator rejects a visual-only case that claims explicit dimensions, a dimensioned case that omits that gate, or a visual review that skips or fails one of the case's criteria.
+
+The visual criteria are qualitative evidence entered by a reviewer; the validator checks that they are present and hash-bound, not that an agent or human judged them correctly. A passing `run_report.json` from `run_agent_cad.py` remains geometry/STEP evidence only. Keep a human review distinct from an agent review in the `reviewer` field, and do not infer human acceptance from an agent pass.
+
 ## Initial acceptance ladder
 
-Start with 10 simple, supported parts (mostly prismatic), each with a reference view and at least two known key dimensions. For each case:
+Use `repro-block` to validate the dimensioned path and `visual-pose-dog` to validate a visual approximation without inventing a scale. For each case:
 
 1. Spec gate: known / inferred / unknown and user-confirmed values remain distinguishable.
 2. Geometry gate: build succeeds; expected solids are valid and positive-volume; explicit dimensions pass.
 3. Exchange gate: STEP exports and re-imports, preserving solid count and checked dimensions.
 4. Repeatability gate: rerun the same pinned configuration; all required gates pass and metrics stay within case tolerances. Record model variability separately if the pipeline is stochastic.
-5. Visual gate: compare input and CAD from matched views; record reviewer, outcome, and concise findings.
+5. Visual gate: compare input and CAD from matched views; record reviewer, outcome, and concise findings. For `visual-pose-dog`, record an outcome and finding for every criterion in `case.json`.
 
-Report per-case and aggregate pass rates, failures, and unsupported inputs. A failed or unsupported case is data, not something to remove from the denominator after seeing the result. Ten cases establish an initial repeatable benchmark, not general-purpose CAD accuracy or manufacturing readiness.
+Report per-case and aggregate pass rates, failures, and unsupported inputs. A failed or unsupported case is data, not something to remove from the denominator after seeing the result. These two fixtures establish separate acceptance profiles, not general-purpose CAD accuracy or manufacturing readiness. The included manifest tests use synthetic file contents and do not substitute for running Open CASCADE, inspecting the STEP output, or independently judging the reference comparison.
 
 ## Current boundary
 
-This repository has the case/run manifest contract, metadata/hash/tolerance validator, resumable stage/evidence state runner, a narrow build123d/Open CASCADE worker for the supported box-and-hole fixture, generic `scripts/inspect_step.py` metrics, and `scripts/run_agent_cad.py` for reviewed agent-authored model execution, STEP inspection, and preview/comparison artifacts. The agent—not the runner—performs image understanding, model planning, visual review, and refinement. The dog-photo prototype run demonstrates the local loop for one hand-authored approximation; it is not broad automation or evidence of general photo-understanding quality. The optional provider adapter is not a substitute for CAD capability and is not required when the agent already sees the input image.
+This repository has the case/run manifest contract, metadata/hash/tolerance validator, resumable stage/evidence state runner, a narrow build123d/Open CASCADE worker for the supported box-and-hole fixture, generic `scripts/inspect_step.py` metrics, and `scripts/run_agent_cad.py` for reviewed agent-authored model execution, STEP inspection, and preview/comparison artifacts. The agent—not the runner—performs image understanding, model planning, visual review, and refinement. The synthetic dog illustration fixture checks that visual criteria are independently recorded; it is not evidence of performance on real photographs or general photo-understanding quality. The optional provider adapter is not a substitute for CAD capability and is not required when the agent already sees the input image.
