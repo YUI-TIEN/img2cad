@@ -2,5 +2,6 @@ __pycache__/
 *.py[cod]
 .venv-cad/
 benchmark/runs/
-build/
-img2cad.egg-info/
+/build/
+/img2cad.egg-info/
+/_site/
