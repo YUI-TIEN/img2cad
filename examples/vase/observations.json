@@ -1,0 +1,27 @@
+{
+  "observed": [
+    "single vase in front view on a plain background with a floor plane",
+    "narrow flat foot, wide rounded belly in the lower half, long tapering neck, slightly flared lip",
+    "dark ellipse at the top shows an open mouth",
+    "uniform blue color with one highlight stripe"
+  ],
+  "inferred": [
+    "the vase is rotationally symmetric, so the silhouette gives the radius at each height",
+    "it is hollow with a thin wall because the mouth is open"
+  ],
+  "unknowns": [
+    "physical scale",
+    "wall thickness",
+    "inside shape"
+  ],
+  "evidence": [
+    {
+      "claim": "round foot/belly/neck/lip profile",
+      "source": "reference.png silhouette edge"
+    },
+    {
+      "claim": "open mouth",
+      "source": "reference.png dark ellipse at the top"
+    }
+  ]
+}

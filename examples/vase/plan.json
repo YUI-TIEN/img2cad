@@ -1,0 +1,15 @@
+{
+  "target_type": "visual_approximation",
+  "goal": "Recognizable hollow vase whose silhouette follows the illustration",
+  "geometry_plan": [
+    "assume 1 px ~ 0.4 mm so the vase is 200 mm tall",
+    "measure half-width of the silhouette at 8 heights and use them as (radius, height) spline points",
+    "close the profile with lines to the axis, make_face on Plane.XZ, revolve about Axis.Z",
+    "hollow with offset(amount=-2.5, openings=top face) to keep the mouth open"
+  ],
+  "constraints": [],
+  "unknowns": [
+    "scale is assumed",
+    "wall thickness 2.5 mm is assumed"
+  ]
+}

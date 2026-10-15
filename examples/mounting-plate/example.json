@@ -1,0 +1,279 @@
+{
+  "dimension_checks": [
+    {
+      "axis": "x",
+      "expected": 80.0,
+      "measured": 80.0,
+      "name": "length",
+      "passed": true,
+      "tolerance": 0.01
+    },
+    {
+      "axis": "y",
+      "expected": 50.0,
+      "measured": 50.0,
+      "name": "width",
+      "passed": true,
+      "tolerance": 0.01
+    },
+    {
+      "axis": "z",
+      "expected": 6.0,
+      "measured": 6.0,
+      "name": "height",
+      "passed": true,
+      "tolerance": 0.01
+    },
+    {
+      "diameter": 6.0,
+      "expected": 4,
+      "measured": 4,
+      "name": "hole",
+      "passed": true,
+      "scope": "full cylindrical features grouped by axis; position is not checked",
+      "tolerance": 0.01
+    },
+    {
+      "diameter": 10.0,
+      "expected": 1,
+      "measured": 1,
+      "name": "hole",
+      "passed": true,
+      "scope": "full cylindrical features grouped by axis; position is not checked",
+      "tolerance": 0.01
+    },
+    {
+      "expected": 22767.8,
+      "measured": 22767.7699835308,
+      "name": "volume",
+      "passed": true,
+      "tolerance": 1.0
+    }
+  ],
+  "file_sha256": {
+    "comparison.png": "79ceffb701e1fdae5eee669980e5496b86e2904242a9454ae66a18b3bf64c871",
+    "model.py": "25255a1670fcf1925ee082e2ca4fd5d39ed2ffd8236f1a446e8718c512d59e3f",
+    "observations.json": "61d8fbd2bd94751fc13bf04d0fbd5f0867a629411a8850672cbef752de409dc5",
+    "plan.json": "76902b36344919096e7121d70e816c9fec1805edd2de9aeaab15bc66fbb52ec9",
+    "reference.png": "c8779c2b841586fc43e432223fac215fc40a4d39b684d4c2231f2daad5e6285e",
+    "silhouette.png": "5b6760be91c43a489f33d11b693d4b2a91fe8a1e95eeb90f201ea18d953798d3",
+    "visual_review.json": "f107184300cd4e8769b58cf98a613eb0cba58e5f16d42fb6798b142796864a54"
+  },
+  "final_revision": "r001",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          -36.0,
+          -21.0,
+          0.0
+        ],
+        "diameter": 8.0,
+        "faces": 1,
+        "full": false,
+        "kind": "boss",
+        "sweep": 0.25
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          -36.0,
+          21.0,
+          0.0
+        ],
+        "diameter": 8.0,
+        "faces": 1,
+        "full": false,
+        "kind": "boss",
+        "sweep": 0.25
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          36.0,
+          -21.0,
+          0.0
+        ],
+        "diameter": 8.0,
+        "faces": 1,
+        "full": false,
+        "kind": "boss",
+        "sweep": 0.25
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          36.0,
+          21.0,
+          0.0
+        ],
+        "diameter": 8.0,
+        "faces": 1,
+        "full": false,
+        "kind": "boss",
+        "sweep": 0.25
+      },
+      {
+        "axis_direction": [
+          -0.0,
+          -0.0,
+          1.0
+        ],
+        "axis_point": [
+          -32.0,
+          -17.0,
+          0.0
+        ],
+        "diameter": 6.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          -0.0,
+          -0.0,
+          1.0
+        ],
+        "axis_point": [
+          -32.0,
+          17.0,
+          0.0
+        ],
+        "diameter": 6.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          -0.0,
+          -0.0,
+          1.0
+        ],
+        "axis_point": [
+          32.0,
+          -17.0,
+          0.0
+        ],
+        "diameter": 6.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          -0.0,
+          -0.0,
+          1.0
+        ],
+        "axis_point": [
+          32.0,
+          17.0,
+          0.0
+        ],
+        "diameter": 6.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          -0.0,
+          -0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 10.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      }
+    ],
+    "dimensions": {
+      "x": 80.0,
+      "y": 50.0,
+      "z": 6.0
+    },
+    "solid_count": 1,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 22767.7699835308
+  },
+  "human_acceptance": "not_verified",
+  "name": "mounting-plate",
+  "reference_sha256": "c8779c2b841586fc43e432223fac215fc40a4d39b684d4c2231f2daad5e6285e",
+  "revisions": [
+    {
+      "dimensions": "passed",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.5243,
+    "best_view": "Top \u00b7 X/Y",
+    "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.3779,
+    "reliable": true,
+    "views": {
+      "Front \u00b7 Y/Z": {
+        "iou": 0.2111,
+        "mirrored": false
+      },
+      "Isometric": {
+        "iou": 0.5102,
+        "mirrored": true
+      },
+      "Side \u00b7 X/Z": {
+        "iou": 0.1305,
+        "mirrored": false
+      },
+      "Top \u00b7 X/Y": {
+        "iou": 0.5243,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "dimension_constrained",
+  "techniques": [
+    "Box + fillet(edges().filter_by(Axis.Z)) before drilling",
+    "GridLocations + Hole for a hole pattern",
+    "hole count/diameter and volume constraints"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}

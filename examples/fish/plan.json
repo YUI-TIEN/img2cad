@@ -1,0 +1,15 @@
+{
+  "target_type": "visual_approximation",
+  "goal": "Recognizable fish with an organic lofted body and thin fins",
+  "geometry_plan": [
+    "assume 1 px ~ 0.4 mm so the body is 180 mm long",
+    "loft elliptical sections on Plane.YZ.offset(x) along X; half-heights from the silhouette, half-widths estimated at about 45% of half-height",
+    "tail and dorsal fin: polygons on Plane.XZ extruded symmetrically 2 mm thick",
+    "pectoral fin and eye from the image as separate features"
+  ],
+  "constraints": [],
+  "unknowns": [
+    "thickness is estimated",
+    "scale is assumed"
+  ]
+}

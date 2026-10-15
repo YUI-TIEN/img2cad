@@ -20,11 +20,31 @@ from PIL import Image, ImageDraw, ImageFont
 
 from agent_cad_worker import parse_model_source
 from inspect_step import inspect_step
+from silhouette import compare as compare_silhouettes
 
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKER = Path(__file__).with_name("agent_cad_worker.py")
 MAX_TIMEOUT = 600
+FONT_CANDIDATES = (
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans.ttf",
+    "C:/Windows/Fonts/arial.ttf",
+)
+
+
+def load_font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
+    for candidate in FONT_CANDIDATES:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except OSError:
+            continue
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
 
 
 def sha256(path: Path) -> str:
@@ -35,7 +55,8 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def raster_preview(step_path: Path, output_path: Path, tolerance: float, reference_view: tuple[float, float, float] | None = None) -> None:
+def raster_preview(step_path: Path, output_path: Path, tolerance: float, reference_view: tuple[float, float, float] | None = None) -> dict[str, np.ndarray]:
+    """Render four shaded orthographic panels and return each panel's silhouette mask."""
     shape = import_step(str(step_path))
     vertices, triangles = shape.tessellate(tolerance, 0.12)
     coords = np.array([(float(p.X), float(p.Y), float(p.Z)) for p in vertices], dtype=np.float64)
@@ -65,12 +86,9 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
     width, height = 1280, 900
     image = Image.new("RGB", (width, height), "#f3f6fa")
     draw = ImageDraw.Draw(image)
-    try:
-        font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 19)
-        title_font = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 25)
-    except OSError:
-        font = ImageFont.load_default()
-        title_font = font
+    font = load_font(19)
+    title_font = load_font(25)
+    masks: dict[str, np.ndarray] = {}
     draw.text((40, 24), "img2cad · STEP preview", fill="#18324b", font=title_font)
     light = (0.42, 0.58, 0.70)
     light_len = math.sqrt(sum(value * value for value in light))
@@ -136,6 +154,7 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
             color = np.asarray([int(channel * brightness) for channel in base], dtype=np.uint8)
             region_z[visible] = depths[visible]
             pixels[y0:y1 + 1, x0:x1 + 1][visible] = color
+        masks[title] = np.isfinite(zbuffer)
         panel = Image.fromarray(pixels)
         image.paste(panel, (left, top))
         draw = ImageDraw.Draw(image)
@@ -143,21 +162,24 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
         draw.rectangle((left + 1, top + 1, left + panel_w - 1, top + panel_h - 1), outline="#ccd7e2", width=2)
 
     image.save(output_path, format="PNG", optimize=True)
+    return masks
 
 
 def make_comparison(reference: Path, preview: Path, output_path: Path) -> None:
+    """Place the reference and the CAD views side by side at the same height."""
     ref = Image.open(reference).convert("RGB")
     cad = Image.open(preview).convert("RGB")
-    panel_w, panel_h = 720, 800
-    canvas = Image.new("RGB", (panel_w * 2, panel_h + 80), "#f3f6fa")
+    content_h, margin, header = 900, 24, 64
+    cad = cad.resize((round(cad.width * content_h / cad.height), content_h), Image.Resampling.LANCZOS)
+    ref_scale = min(content_h / ref.height, 1100 / ref.width)
+    ref = ref.resize((max(1, round(ref.width * ref_scale)), max(1, round(ref.height * ref_scale))), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (margin * 3 + ref.width + cad.width, header + content_h + margin), "#f3f6fa")
     draw = ImageDraw.Draw(canvas)
-    font = ImageFont.load_default()
-    draw.text((28, 24), "Reference image", fill="#18324b", font=font)
-    draw.text((panel_w + 28, 24), "Generated CAD views", fill="#18324b", font=font)
-    ref.thumbnail((panel_w - 36, panel_h - 30), Image.Resampling.LANCZOS)
-    cad.thumbnail((panel_w - 36, panel_h - 30), Image.Resampling.LANCZOS)
-    canvas.paste(ref, (18 + (panel_w - 36 - ref.width) // 2, 70 + (panel_h - 30 - ref.height) // 2))
-    canvas.paste(cad, (panel_w + 18, 70))
+    font = load_font(26)
+    draw.text((margin, 18), "Reference image", fill="#18324b", font=font)
+    draw.text((margin * 2 + ref.width, 18), "Generated CAD views (not camera-aligned)", fill="#18324b", font=font)
+    canvas.paste(ref, (margin, header + (content_h - ref.height) // 2))
+    canvas.paste(cad, (margin * 2 + ref.width, header))
     canvas.save(output_path, format="PNG", optimize=True)
 
 
@@ -201,7 +223,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if inspection["status"] != "passed":
         raise RuntimeError("STEP inspection failed: B-rep invalid or no positive-volume solid")
     preview_path = run_dir / "preview.png"
-    raster_preview(step_path, preview_path, args.mesh_tolerance, args.reference_view)
+    view_masks = raster_preview(step_path, preview_path, args.mesh_tolerance, args.reference_view)
 
     reference_path = args.reference.expanduser().resolve() if args.reference else None
     if reference_path:
@@ -214,9 +236,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         shutil.copyfile(reference_path, local_reference)
         comparison_path = run_dir / "comparison.png"
         make_comparison(local_reference, preview_path, comparison_path)
+        silhouette_path = run_dir / "silhouette.png"
+        silhouette = compare_silhouettes(local_reference, view_masks, silhouette_path)
     else:
         local_reference = None
         comparison_path = None
+        silhouette = None
 
     report: dict[str, Any] = {
         "schema_version": 1,
@@ -234,6 +259,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if local_reference and comparison_path:
         report["reference"] = {"path": local_reference.name, "sha256": sha256(local_reference)}
         report["comparison"] = {"path": comparison_path.name, "sha256": sha256(comparison_path)}
+        report["silhouette"] = silhouette
+        if silhouette_path.is_file():
+            report["silhouette_overlay"] = {"path": silhouette_path.name, "sha256": sha256(silhouette_path)}
     report_path = run_dir / "run_report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report

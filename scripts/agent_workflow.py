@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +20,7 @@ from record_visual_review import record as record_visual_review
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_NAME = "workflow.json"
+RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay")
 STAGES = ("observations", "plan", "source_review", "geometry", "dimensions", "visual_review")
 
 
@@ -205,6 +207,50 @@ def record_observations(args: argparse.Namespace) -> None:
     print(f"recorded observations: {output}")
 
 
+AXIS_FOR = {"length": "x", "width": "y", "height": "z", "x": "x", "y": "y", "z": "z"}
+FEATURE_CONSTRAINTS = {"hole", "boss"}
+DEFAULT_TOLERANCE = 0.02
+
+
+def finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+
+
+def validate_constraint(constraint: Any) -> None:
+    if not isinstance(constraint, dict) or constraint.get("name") not in {*AXIS_FOR, "volume", *FEATURE_CONSTRAINTS}:
+        raise ValueError("measurable constraints must be named length/width/height, x/y/z, volume, hole, or boss")
+    tolerance = constraint.get("tolerance", DEFAULT_TOLERANCE)
+    if not finite_number(tolerance) or tolerance < 0:
+        raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
+    name = constraint["name"]
+    if name in FEATURE_CONSTRAINTS:
+        count = constraint.get("count")
+        if not finite_number(constraint.get("diameter")) or constraint["diameter"] <= 0 or not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            raise ValueError(f"{name} constraints need positive diameter and integer count >= 1")
+        return
+    if not finite_number(constraint.get("value")):
+        raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
+    if name == "volume" and "tolerance" not in constraint:
+        raise ValueError("volume constraints need an explicit absolute tolerance in cubic model units")
+
+
+def check_constraint(constraint: dict[str, Any], inspection: dict[str, Any]) -> dict[str, Any]:
+    name = constraint["name"]
+    tolerance = float(constraint.get("tolerance", DEFAULT_TOLERANCE))
+    if name in FEATURE_CONSTRAINTS:
+        diameter = float(constraint["diameter"])
+        matches = [item for item in inspection.get("cylindrical_features", []) if item["kind"] == name and item.get("full") and abs(item["diameter"] - diameter) <= tolerance]
+        return {"name": name, "diameter": diameter, "tolerance": tolerance, "expected": constraint["count"], "measured": len(matches), "passed": len(matches) == constraint["count"],
+                "scope": "full cylindrical features grouped by axis; position is not checked"}
+    expected = float(constraint["value"])
+    if name == "volume":
+        measured = float(inspection["volume"])
+        return {"name": name, "expected": expected, "measured": measured, "tolerance": tolerance, "passed": abs(measured - expected) <= tolerance}
+    axis = AXIS_FOR[name]
+    measured = float(inspection["dimensions"][axis])
+    return {"name": name, "axis": axis, "expected": expected, "measured": measured, "tolerance": tolerance, "passed": abs(measured - expected) <= tolerance}
+
+
 def record_plan(args: argparse.Namespace) -> None:
     root = args.workflow.expanduser().resolve()
     state = load_state(root)
@@ -228,12 +274,7 @@ def record_plan(args: argparse.Namespace) -> None:
     if state["target_type"] == "dimension_constrained" and not data["constraints"]:
         raise ValueError("dimension_constrained plans need explicit numeric bounds in constraints")
     for constraint in data["constraints"]:
-        if not isinstance(constraint, dict) or constraint.get("name") not in {"length", "width", "height", "x", "y", "z"}:
-            raise ValueError("measurable constraints must be named length/width/height or x/y/z")
-        if any(isinstance(constraint.get(key), bool) for key in ("value", "tolerance")):
-            raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
-        if not isinstance(constraint.get("value"), (int, float)) or not math.isfinite(float(constraint["value"])) or not isinstance(constraint.get("tolerance", 0.02), (int, float)) or not math.isfinite(float(constraint.get("tolerance", 0.02))) or constraint.get("tolerance", 0.02) < 0:
-            raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
+        validate_constraint(constraint)
     output = root / revision["directory"] / "plan.json"
     shutil.copyfile(source, output)
     revision["stages"]["plan"] = stage_record("recorded", {"observations": revision["stages"]["observations"]["outputs"]["observations"], "input": sha256(source)}, {"plan": sha256(output)}, path=output.name)
@@ -305,24 +346,20 @@ def run_geometry(args: argparse.Namespace) -> None:
         stages["geometry"] = stage_record("failed", {"model_source": sha256(model), "reference": state["reference"]["sha256"]}, {}, command=command, exit_code=0)
         save_state(root, state)
         raise ValueError("runner did not produce a passing geometry/STEP-only gate")
-    artifacts = {name: sha256(cad_dir / report[name]["path"]) for name in ("model_source", "step", "preview", "reference", "comparison")}
+    artifacts = {name: sha256(cad_dir / report[name]["path"]) for name in RUN_ARTIFACTS if name in report}
     if artifacts["model_source"] != stages["source_review"]["outputs"]["model_source"]:
         raise ValueError("CAD runner source differs from reviewed source")
-    checks = []
-    axis_for = {"length": "x", "width": "y", "height": "z", "x": "x", "y": "y", "z": "z"}
-    for constraint in plan["constraints"]:
-        axis = axis_for[constraint["name"]]
-        expected = float(constraint["value"])
-        tolerance = float(constraint.get("tolerance", 0.02))
-        measured = float(report["inspection"]["dimensions"][axis])
-        checks.append({"name": constraint["name"], "axis": axis, "expected": expected, "measured": measured, "tolerance": tolerance, "passed": abs(measured - expected) <= tolerance})
+    checks = [check_constraint(constraint, report["inspection"]) for constraint in plan["constraints"]]
     dimension_applicable = state["target_type"] == "dimension_constrained"
     dimensions_passed = all(item["passed"] for item in checks) if dimension_applicable else True
     stages["geometry"] = stage_record("passed", {"model_source": artifacts["model_source"], "reference": artifacts["reference"], "observations": observations_hash, "plan": plan_hash}, {**artifacts, "run_report": sha256(report_path)}, run_directory=str(cad_dir.relative_to(root)), status_scope="geometry_and_step_only", command=command, exit_code=0)
-    stages["dimensions"] = stage_record("passed" if dimension_applicable and dimensions_passed else "not_applicable" if not dimension_applicable else "failed", {"model_source": artifacts["model_source"], "plan": plan_hash}, {"run_report": sha256(report_path)}, checks=checks, status_scope="declared_bounds_only" if dimension_applicable else "not_applicable")
+    stages["dimensions"] = stage_record("passed" if dimension_applicable and dimensions_passed else "not_applicable" if not dimension_applicable else "failed", {"model_source": artifacts["model_source"], "plan": plan_hash}, {"run_report": sha256(report_path)}, checks=checks, status_scope="declared_bounds_volume_and_cylindrical_features" if dimension_applicable else "not_applicable")
     stages["visual_review"] = {"status": "pending", "inputs": {}, "outputs": {}}
     save_state(root, state)
-    print(json.dumps({"geometry": "passed", "status_scope": "geometry_and_step_only", "artifacts": artifacts, "next": next_action(revision)}, indent=2))
+    silhouette = report.get("silhouette") or {}
+    summary = {"best_view": silhouette.get("best_view"), "best_iou": silhouette.get("best_iou"), "reliable": silhouette.get("reliable"), "advisory": True} if silhouette else None
+    print(json.dumps({"geometry": "passed", "status_scope": "geometry_and_step_only", "artifacts": artifacts, "dimension_checks": checks if dimension_applicable else "not_applicable",
+                      "silhouette": summary, "next": next_action(revision)}, indent=2))
 
 
 def review(args: argparse.Namespace) -> None:
@@ -352,7 +389,7 @@ def review(args: argparse.Namespace) -> None:
     for artifact, expected in stages["geometry"]["outputs"].items():
         if artifact == "run_report":
             actual = sha256(cad_dir / "run_report.json")
-        elif artifact in {"model_source", "step", "preview", "reference", "comparison"}:
+        elif artifact in RUN_ARTIFACTS:
             actual = sha256(cad_dir / json.loads((cad_dir / "run_report.json").read_text())[artifact]["path"])
         else:
             continue
@@ -400,6 +437,87 @@ def new_revision(args: argparse.Namespace) -> None:
     print(json.dumps({"revision": revision_id, "previous_preserved": previous["id"], "downstream_invalidated": ["source_review", "geometry", "dimensions", "visual_review"], "next": next_action(active(state))}, indent=2))
 
 
+def verified_run_artifact(root: Path, stage: dict[str, Any], key: str) -> Path:
+    cad_dir = root / stage["run_directory"]
+    report = read_json(cad_dir / "run_report.json")
+    if sha256(cad_dir / "run_report.json") != stage["outputs"].get("run_report"):
+        raise ValueError(f"stale run report in {stage['run_directory']}")
+    path = cad_dir / report[key]["path"]
+    if path.is_symlink() or not path.is_file() or sha256(path) != stage["outputs"].get(key):
+        raise ValueError(f"stale geometry artifact hash: {key}")
+    return path
+
+
+def promote(args: argparse.Namespace) -> None:
+    """Copy an accepted workflow into the example library so later agents can learn from it."""
+    root = args.workflow.expanduser().resolve()
+    state = load_state(root)
+    revision = active(state)
+    stages = revision["stages"]
+    if stages["visual_review"]["status"] != "acceptable":
+        raise ValueError("only a workflow whose active revision has an acceptable visual review can be promoted")
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", args.name):
+        raise ValueError("--name must be a lowercase slug such as mounting-plate")
+    if not args.technique or any(not item.strip() for item in args.technique):
+        raise ValueError("record at least one --technique the example demonstrates")
+    destination = args.dest.expanduser().resolve() / args.name
+    if destination.exists():
+        raise ValueError(f"example already exists; refusing to overwrite: {destination}")
+    observations, _ = recorded_stage_file(root, state, revision, "observations", "observations")
+    plan, _ = recorded_stage_file(root, state, revision, "plan", "plan")
+    reference = root / state["reference"]["path"]
+    if sha256(reference) != state["reference"]["sha256"]:
+        raise ValueError("pinned reference image changed")
+    review_path = root / stages["visual_review"]["review_path"]
+    if sha256(review_path) != stages["visual_review"]["outputs"]["review"]:
+        raise ValueError("visual review changed after it was recorded")
+    files = {
+        f"reference{reference.suffix}": reference,
+        "observations.json": observations,
+        "plan.json": plan,
+        "model.py": verified_run_artifact(root, stages["geometry"], "model_source"),
+        "comparison.png": verified_run_artifact(root, stages["geometry"], "comparison"),
+        "visual_review.json": review_path,
+    }
+    if "silhouette_overlay" in stages["geometry"]["outputs"]:
+        files["silhouette.png"] = verified_run_artifact(root, stages["geometry"], "silhouette_overlay")
+    history = []
+    for item in state["revisions"]:
+        item_stages = item["stages"]
+        entry = {"id": item["id"], "reason": item.get("reason"), "geometry": item_stages["geometry"]["status"], "dimensions": item_stages["dimensions"]["status"],
+                 "visual_review": item_stages["visual_review"]["status"]}
+        if item is not revision and item_stages["geometry"]["status"] == "passed" and item_stages["visual_review"].get("review_path"):
+            prefix = f"history/{item['id']}"
+            files[f"{prefix}/model.py"] = verified_run_artifact(root, item_stages["geometry"], "model_source")
+            files[f"{prefix}/comparison.png"] = verified_run_artifact(root, item_stages["geometry"], "comparison")
+            files[f"{prefix}/visual_review.json"] = root / item_stages["visual_review"]["review_path"]
+            entry["files"] = prefix
+        history.append(entry)
+    report = read_json(root / stages["geometry"]["run_directory"] / "run_report.json")
+    inspection = report["inspection"]
+    summary = {
+        "schema_version": 1,
+        "name": args.name,
+        "target_type": state["target_type"],
+        "techniques": [item.strip() for item in args.technique],
+        "reference_sha256": state["reference"]["sha256"],
+        "final_revision": revision["id"],
+        "revisions": history,
+        "geometry": {key: inspection[key] for key in ("brep_valid", "solid_count", "dimensions", "volume", "cylindrical_features", "units") if key in inspection},
+        "dimension_checks": stages["dimensions"].get("checks", []) if stages["dimensions"]["status"] == "passed" else stages["dimensions"]["status"],
+        "silhouette": report.get("silhouette"),
+        "visual_review": {"verdict": "acceptable", "reviewer": stages["visual_review"]["reviewer"]},
+        "human_acceptance": state["human_acceptance"],
+        "file_sha256": {name: sha256(path) for name, path in files.items()},
+    }
+    destination.mkdir(parents=True)
+    for name, path in files.items():
+        (destination / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, destination / name)
+    (destination / "example.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps({"promoted": str(destination), "files": sorted(files), "next": "write a short README.md in the example explaining the technique and any pitfalls, and add it to examples/README.md"}, indent=2))
+
+
 def show(args: argparse.Namespace) -> None:
     state = load_state(args.workflow.expanduser().resolve())
     revision = active(state)
@@ -437,6 +555,12 @@ def main() -> int:
     revise.add_argument("workflow", type=Path)
     revise.add_argument("--reason", required=True)
     revise.set_defaults(func=new_revision)
+    library = commands.add_parser("promote", help="copy an accepted workflow into the example library")
+    library.add_argument("workflow", type=Path)
+    library.add_argument("--name", required=True, help="lowercase slug for the example directory")
+    library.add_argument("--technique", action="append", help="modeling technique the example demonstrates (repeatable)")
+    library.add_argument("--dest", type=Path, default=ROOT / "examples")
+    library.set_defaults(func=promote)
     status = commands.add_parser("status", help="show workflow status and resume action")
     status.add_argument("workflow", type=Path)
     status.set_defaults(func=show)

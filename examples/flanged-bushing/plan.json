@@ -1,0 +1,55 @@
+{
+  "target_type": "dimension_constrained",
+  "goal": "Revolved bushing matching the drawn diameters and lengths, with the axis along global Z",
+  "geometry_plan": [
+    "sketch the closed half-profile on Plane.XZ with sketch X = radius and sketch Y = axial position",
+    "start the profile at the bore radius (6) so the revolve leaves the bore open",
+    "revolve 360 degrees about Axis.Z"
+  ],
+  "constraints": [
+    {
+      "name": "x",
+      "value": 40,
+      "tolerance": 0.01
+    },
+    {
+      "name": "y",
+      "value": 40,
+      "tolerance": 0.01
+    },
+    {
+      "name": "z",
+      "value": 25,
+      "tolerance": 0.01
+    },
+    {
+      "name": "hole",
+      "diameter": 12,
+      "count": 1,
+      "tolerance": 0.01
+    },
+    {
+      "name": "boss",
+      "diameter": 40,
+      "count": 1,
+      "tolerance": 0.01
+    },
+    {
+      "name": "boss",
+      "diameter": 24,
+      "count": 1,
+      "tolerance": 0.01
+    },
+    {
+      "name": "volume",
+      "value": 12503.5,
+      "tolerance": 1.0
+    }
+  ],
+  "derivations": [
+    "volume = pi/4*(40^2-12^2)*5 + pi/4*(24^2-12^2)*20 = 12503.5 mm^3"
+  ],
+  "unknowns": [
+    "drawing axis is horizontal; the model puts it on Z, which changes orientation but not shape"
+  ]
+}

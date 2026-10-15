@@ -1,0 +1,29 @@
+{
+  "observed": [
+    "side view of a fish on a plain background",
+    "long oval body about 2.25 times as long as it is tall",
+    "forked tail on the right",
+    "triangular dorsal fin on top",
+    "small triangular pectoral fin on the lower side",
+    "round eye near the front"
+  ],
+  "inferred": [
+    "the body is thinner than it is tall, like most fish; the image shows no thickness",
+    "fins are thin plates"
+  ],
+  "unknowns": [
+    "body thickness",
+    "the hidden side",
+    "scale"
+  ],
+  "evidence": [
+    {
+      "claim": "oval body, forked tail, dorsal fin",
+      "source": "reference.png silhouette"
+    },
+    {
+      "claim": "pectoral fin and eye",
+      "source": "reference.png darker triangle inside the body and white/black circle"
+    }
+  ]
+}

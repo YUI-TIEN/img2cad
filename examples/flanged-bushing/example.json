@@ -1,0 +1,186 @@
+{
+  "dimension_checks": [
+    {
+      "axis": "x",
+      "expected": 40.0,
+      "measured": 40.0,
+      "name": "x",
+      "passed": true,
+      "tolerance": 0.01
+    },
+    {
+      "axis": "y",
+      "expected": 40.0,
+      "measured": 40.0,
+      "name": "y",
+      "passed": true,
+      "tolerance": 0.01
+    },
+    {
+      "axis": "z",
+      "expected": 25.0,
+      "measured": 25.0,
+      "name": "z",
+      "passed": true,
+      "tolerance": 0.01
+    },
+    {
+      "diameter": 12.0,
+      "expected": 1,
+      "measured": 1,
+      "name": "hole",
+      "passed": true,
+      "scope": "full cylindrical features grouped by axis; position is not checked",
+      "tolerance": 0.01
+    },
+    {
+      "diameter": 40.0,
+      "expected": 1,
+      "measured": 1,
+      "name": "boss",
+      "passed": true,
+      "scope": "full cylindrical features grouped by axis; position is not checked",
+      "tolerance": 0.01
+    },
+    {
+      "diameter": 24.0,
+      "expected": 1,
+      "measured": 1,
+      "name": "boss",
+      "passed": true,
+      "scope": "full cylindrical features grouped by axis; position is not checked",
+      "tolerance": 0.01
+    },
+    {
+      "expected": 12503.5,
+      "measured": 12503.538761287435,
+      "name": "volume",
+      "passed": true,
+      "tolerance": 1.0
+    }
+  ],
+  "file_sha256": {
+    "comparison.png": "9b7fdb24fa3c6a704a06adefd369bb840e1679ce5a7a5e6fcf8e2a0294ba8fe1",
+    "model.py": "088c9d33e8aceb51ca3d0accbe3147f1f276352534b3e5fc132f7465d98167e1",
+    "observations.json": "8f9922a30eff1d4283a871278d6e0873f1f7652ba0c725bd2ccf02064ff28998",
+    "plan.json": "fd8c97b62d1e33efdc8fb3a68e2b6470a6f5523ef4f5fe1c5db1e9a464476bd4",
+    "reference.png": "5eccd8391799e01def0ec952f4f74298c974743f331e21695f28ce9c1b7dab8e",
+    "silhouette.png": "305e2544cadacb746e2859f34db6dcbfdec961a17e293ae74bea41fbd7c362ce",
+    "visual_review.json": "4d7c0f665cb2b2c07d16aef5c4898261a298fbf5825c62eb18f1a5a186458317"
+  },
+  "final_revision": "r001",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 24.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 40.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 12.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      }
+    ],
+    "dimensions": {
+      "x": 40.0,
+      "y": 40.0,
+      "z": 25.0
+    },
+    "solid_count": 1,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 12503.538761287435
+  },
+  "human_acceptance": "not_verified",
+  "name": "flanged-bushing",
+  "reference_sha256": "5eccd8391799e01def0ec952f4f74298c974743f331e21695f28ce9c1b7dab8e",
+  "revisions": [
+    {
+      "dimensions": "passed",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.4308,
+    "best_view": "Side \u00b7 X/Z",
+    "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.1403,
+    "reliable": true,
+    "views": {
+      "Front \u00b7 Y/Z": {
+        "iou": 0.4308,
+        "mirrored": false
+      },
+      "Isometric": {
+        "iou": 0.3123,
+        "mirrored": true
+      },
+      "Side \u00b7 X/Z": {
+        "iou": 0.4308,
+        "mirrored": false
+      },
+      "Top \u00b7 X/Y": {
+        "iou": 0.2079,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "dimension_constrained",
+  "techniques": [
+    "half-profile Polyline on Plane.XZ + make_face + revolve(Axis.Z)",
+    "bore left open by starting the profile at the bore radius",
+    "boss/hole constraints for turned parts"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}
