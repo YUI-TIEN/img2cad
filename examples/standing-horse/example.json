@@ -1,0 +1,150 @@
+{
+  "dimension_checks": "not_applicable",
+  "file_sha256": {
+    "comparison.png": "f7ac9a2a5bec89fa7144da5a106b9a00edfd868dec3836fb289513f58aca5f3d",
+    "model.py": "3b0f696b92c8e2043cb570a9fd801c67a8e6fde9d16d66278508c8789d71ad6c",
+    "observations.json": "8e80e09be615537da6649b2d97e56c0f8865c200eb8cbf5502009b914495c668",
+    "plan.json": "bdb248b6ded0c23ccaa06343020daf2744072624ce49a7a11e85b73e3f6a9322",
+    "reference.png": "7b12df9262f3842b570cd91fd9fd1e346250d2f64e3a1c1968db9c799731b5ad",
+    "silhouette.png": "7f2c0790898d779866dc94bf9720c204fb70dde99f8e44f1e502daf4d188fb5c",
+    "visual_review.json": "c48cd23a12fd071bb457771f8f63f61bbf92066a3ba0d3e3a07dd9e4fb0d364e"
+  },
+  "final_revision": "r001",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          -620.0,
+          150.0,
+          0.0
+        ],
+        "diameter": 120.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          -496.0,
+          -150.0,
+          0.0
+        ],
+        "diameter": 120.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          540.0,
+          -150.0,
+          0.0
+        ],
+        "diameter": 120.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          600.0,
+          150.0,
+          0.0
+        ],
+        "diameter": 120.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      }
+    ],
+    "dimensions": {
+      "x": 2351.9985654591874,
+      "y": 500.0000001994915,
+      "z": 1820.4000001000059
+    },
+    "solid_count": 1,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 341327973.1962026
+  },
+  "human_acceptance": "not_verified",
+  "name": "standing-horse",
+  "reference_sha256": "7b12df9262f3842b570cd91fd9fd1e346250d2f64e3a1c1968db9c799731b5ad",
+  "revisions": [
+    {
+      "dimensions": "not_applicable",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.8824,
+    "best_view": "Front \u00b7 from -Y (X right, Z up)",
+    "border_foreground_fraction": 0.0,
+    "boundary_roughness": 8.81,
+    "component_count": 3,
+    "largest_component_share": 0.9454,
+    "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.154,
+    "reliable": true,
+    "unreliable_reasons": [],
+    "views": {
+      "Front \u00b7 from -Y (X right, Z up)": {
+        "iou": 0.8824,
+        "mirrored": false
+      },
+      "Isometric \u00b7 from +X -Y +Z": {
+        "iou": 0.3874,
+        "mirrored": false
+      },
+      "Right \u00b7 from +X (Y right, Z up)": {
+        "iou": 0.1955,
+        "mirrored": true
+      },
+      "Top \u00b7 from +Z (X right, Y up)": {
+        "iou": 0.4676,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "visual_approximation",
+  "techniques": [
+    "segment helper: tapered Cone between two 3D points via Plane(origin, z_dir)",
+    "jointed legs with rotated ball joints fused into one solid",
+    "Sphere(1).scale(radii) ellipsoids",
+    "preview to iterate before spending a revision"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}

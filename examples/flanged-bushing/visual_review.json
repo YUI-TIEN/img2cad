@@ -15,9 +15,9 @@
   "previous": null,
   "reference_sha256": "5eccd8391799e01def0ec952f4f74298c974743f331e21695f28ce9c1b7dab8e",
   "reviewer": "agent",
-  "run_report_sha256": "4da65f0effe927158a9827b5add7fb67ec96230a84f850704462f7132ba80085",
+  "run_report_sha256": "999cde99aa621dc1d2c40206f784fd7488c6b471bd614d1926bd9bfbdbedbaa8",
   "schema_version": 1,
-  "source_view": "Drawing side view (axis horizontal) compared with CAD Side X/Z panel (axis vertical) and Isometric panel",
+  "source_view": "Drawing side view (axis horizontal) compared with CAD Front (from -Y) panel (axis vertical) and Isometric panel",
   "verdict": "acceptable",
   "visual_status": "recorded_not_independently_verified"
 }

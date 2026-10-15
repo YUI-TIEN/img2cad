@@ -12,15 +12,17 @@ import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from typing import Any
 
 from agent_cad_worker import parse_model_source
+from cli_args import join_negative_option_values, parse_view
 from record_visual_review import record as record_visual_review
 
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_NAME = "workflow.json"
-RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay")
+RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay", "reference_mask")
 STAGES = ("observations", "plan", "source_review", "geometry", "dimensions", "visual_review")
 
 
@@ -271,6 +273,8 @@ def record_plan(args: argparse.Namespace) -> None:
         raise ValueError("geometry_plan must be a nonempty list")
     if not isinstance(data["constraints"], list):
         raise ValueError("constraints must be an array")
+    if not isinstance(data.get("allow_multiple_solids", False), bool):
+        raise ValueError("allow_multiple_solids must be true or false")
     if state["target_type"] == "dimension_constrained" and not data["constraints"]:
         raise ValueError("dimension_constrained plans need explicit numeric bounds in constraints")
     for constraint in data["constraints"]:
@@ -329,10 +333,11 @@ def run_geometry(args: argparse.Namespace) -> None:
     if sha256(root / state["reference"]["path"]) != state["reference"]["sha256"]:
         raise ValueError("reference image changed after workflow initialization")
     cad_dir = revision_dir / "cad"
-    command = [args.cad_python, "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(cad_dir), "--reference", str(root / state["reference"]["path"]), "--cad-python", args.cad_python]
-    if args.reference_view:
-        command.extend(["--reference-view", args.reference_view])
+    command = runner_command(root, state, plan, model, cad_dir, args)
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
+    if result.returncode == 2:
+        # argparse usage error: the model never ran, so do not spend the revision.
+        raise ValueError(f"CAD runner rejected its arguments (revision not used): {result.stderr.strip()[-1000:]}")
     (revision_dir / "geometry.stdout.log").write_text(result.stdout, encoding="utf-8")
     (revision_dir / "geometry.stderr.log").write_text(result.stderr, encoding="utf-8")
     if result.returncode:
@@ -356,10 +361,72 @@ def run_geometry(args: argparse.Namespace) -> None:
     stages["dimensions"] = stage_record("passed" if dimension_applicable and dimensions_passed else "not_applicable" if not dimension_applicable else "failed", {"model_source": artifacts["model_source"], "plan": plan_hash}, {"run_report": sha256(report_path)}, checks=checks, status_scope="declared_bounds_volume_and_cylindrical_features" if dimension_applicable else "not_applicable")
     stages["visual_review"] = {"status": "pending", "inputs": {}, "outputs": {}}
     save_state(root, state)
+    print(json.dumps({"geometry": "passed", "status_scope": "geometry_and_step_only", **run_summary(cad_dir, report),
+                      "dimension_checks": checks if dimension_applicable else "not_applicable", "next": next_action(revision)}, indent=2))
+
+
+def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], model: Path, out_dir: Path, args: argparse.Namespace) -> list[str]:
+    """Build the run_agent_cad.py command, validating local inputs first so a typo never counts as a CAD failure."""
+    cad_python = Path(args.cad_python).expanduser()
+    if not cad_python.is_absolute():
+        cad_python = ROOT / cad_python
+    if not cad_python.is_file():
+        raise ValueError(f"CAD interpreter not found: {cad_python} (create it with: python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock)")
+    command = [str(cad_python), "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(out_dir), "--reference", str(root / state["reference"]["path"]), "--cad-python", str(cad_python)]
+    if args.reference_view:
+        view = parse_view(args.reference_view)
+        command.append("--reference-view=" + ",".join(repr(value) for value in view))
+    if args.reference_mask:
+        mask = args.reference_mask.expanduser().resolve()
+        if not mask.is_file():
+            raise ValueError(f"reference mask not found: {mask}")
+        command.extend(["--reference-mask", str(mask)])
+    if plan.get("allow_multiple_solids"):
+        command.append("--allow-multiple-solids")
+    return command
+
+
+def run_summary(cad_dir: Path, report: dict[str, Any]) -> dict[str, Any]:
+    inspection = report["inspection"]
     silhouette = report.get("silhouette") or {}
-    summary = {"best_view": silhouette.get("best_view"), "best_iou": silhouette.get("best_iou"), "reliable": silhouette.get("reliable"), "advisory": True} if silhouette else None
-    print(json.dumps({"geometry": "passed", "status_scope": "geometry_and_step_only", "artifacts": artifacts, "dimension_checks": checks if dimension_applicable else "not_applicable",
-                      "silhouette": summary, "next": next_action(revision)}, indent=2))
+    files = {key: str(cad_dir / report[key]["path"]) for key in ("comparison", "silhouette_overlay", "step", "preview") if key in report}
+    return {
+        "files": files,
+        "geometry": {"solid_count": inspection["solid_count"], "dimensions": inspection["dimensions"], "volume": inspection["volume"]},
+        "silhouette": {"best_view": silhouette.get("best_view"), "best_iou": silhouette.get("best_iou"), "reliable": silhouette.get("reliable"),
+                       "unreliable_reasons": silhouette.get("unreliable_reasons", []), "advisory": True} if silhouette else None,
+    }
+
+
+def preview(args: argparse.Namespace) -> None:
+    """Build a draft model and render the comparison without touching any stage."""
+    root = args.workflow.expanduser().resolve()
+    state = load_state(root)
+    revision = active(state)
+    plan: dict[str, Any] = {}
+    if revision["stages"]["plan"]["status"] == "recorded":
+        plan_path, _ = recorded_stage_file(root, state, revision, "plan", "plan")
+        plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    model = args.model.expanduser().resolve()
+    if not model.is_file() or model.is_symlink():
+        raise ValueError("model source must be an existing regular, non-symlink file")
+    parse_model_source(model.read_text(encoding="utf-8"), str(model))
+    previews = root / "previews"
+    previews.mkdir(exist_ok=True)
+    number = len([path for path in previews.iterdir() if path.is_dir()]) + 1
+    out_dir = previews / f"p{number:03d}"
+    result = subprocess.run(runner_command(root, state, plan, model, out_dir, args), cwd=ROOT, text=True, capture_output=True, check=False)
+    if result.returncode:
+        inspection_path = out_dir / "inspection.json"
+        detail = {"preview": "failed", "directory": str(out_dir), "error": (result.stderr or result.stdout).strip()[-2000:]}
+        if inspection_path.is_file():
+            detail["inspection"] = read_json(inspection_path)
+        print(json.dumps(detail, indent=2))
+        raise RuntimeError("preview build failed (no workflow stage changed)")
+    report = read_json(out_dir / "run_report.json")
+    checks = [check_constraint(constraint, report["inspection"]) for constraint in plan.get("constraints", [])]
+    print(json.dumps({"preview": "built", "evidence": "scratch only; no workflow stage changed", "directory": str(out_dir), **run_summary(out_dir, report),
+                      "dimension_checks": checks or "none declared"}, indent=2))
 
 
 def review(args: argparse.Namespace) -> None:
@@ -545,8 +612,16 @@ def main() -> int:
     run = commands.add_parser("run", help="execute geometry/STEP gate and generate comparison")
     run.add_argument("workflow", type=Path)
     run.add_argument("--cad-python", default=".venv-cad/bin/python")
-    run.add_argument("--reference-view")
+    run.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z, e.g. 1,-1,0.7 or -0.35,-1,0.35")
+    run.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object) for the silhouette score")
     run.set_defaults(func=run_geometry)
+    draft = commands.add_parser("preview", help="build a draft model and render the comparison without spending a revision")
+    draft.add_argument("workflow", type=Path)
+    draft.add_argument("--model", type=Path, required=True)
+    draft.add_argument("--cad-python", default=".venv-cad/bin/python")
+    draft.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z")
+    draft.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object)")
+    draft.set_defaults(func=preview)
     visual = commands.add_parser("review", help="record hash-bound acceptable/revise/blocked visual review")
     visual.add_argument("workflow", type=Path)
     visual.add_argument("--notes", type=Path, required=True)
@@ -564,11 +639,11 @@ def main() -> int:
     status = commands.add_parser("status", help="show workflow status and resume action")
     status.add_argument("workflow", type=Path)
     status.set_defaults(func=show)
-    args = parser.parse_args()
+    args = parser.parse_args(join_negative_option_values(sys.argv[1:], ("--reference-view",)))
     try:
         args.func(args)
         return 0
-    except (OSError, RuntimeError, ValueError, KeyError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
+    except (OSError, RuntimeError, ValueError, KeyError, json.JSONDecodeError, subprocess.TimeoutExpired, argparse.ArgumentTypeError) as exc:
         parser.exit(1, f"FAIL: {exc}\n")
 
 

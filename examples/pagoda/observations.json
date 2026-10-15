@@ -1,0 +1,29 @@
+{
+  "observed": [
+    "front elevation of a three-tier pagoda",
+    "stone base wider at the bottom than the top (battered sides)",
+    "three wall storeys, each narrower than the one below",
+    "a hipped roof over each storey with a slightly flared eave edge",
+    "a thin finial with a pointed tip on the top roof",
+    "small dark windows on each storey"
+  ],
+  "inferred": [
+    "the plan is square, as is common for pagodas; only the front is visible",
+    "each roof slopes on all four sides (hipped)"
+  ],
+  "unknowns": [
+    "depth (assumed equal to width)",
+    "scale",
+    "roof curvature (drawn straight)"
+  ],
+  "evidence": [
+    {
+      "claim": "tier widths and heights",
+      "source": "reference.png measured edges of base, walls and roofs"
+    },
+    {
+      "claim": "flared eaves",
+      "source": "reference.png roof outline steps outward at its lower edge"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "target_type": "visual_approximation",
+  "goal": "Recognizable standing horse as one fused solid with jointed legs",
+  "geometry_plan": [
+    "assume 1 px = 4 mm; map image (px, py) to x = (px - 450) * 4, z = (560 - py) * 4; camera on -Y so near legs sit at y = -150",
+    "barrel: loft through 7 ellipse sections on Plane.YZ.offset(x) with sizes following an ellipse profile",
+    "neck, tail, ears, leg segments: tapered Cone between two 3D points (segment helper using Plane(origin, z_dir))",
+    "leg joints: spheres slightly larger than the limb, rotated so their poles are not on the leg axis",
+    "head and muzzle: Sphere(1).scale(radii) ellipsoids; hooves: short cylinders",
+    "fuse everything into one solid; check solid_count == 1 with preview before the gate"
+  ],
+  "constraints": [],
+  "unknowns": [
+    "body width estimated at 0.78 of barrel height",
+    "scale assumed"
+  ]
+}

@@ -88,6 +88,8 @@ Use `repro-block` to validate the dimensioned path and `visual-pose-dog` to vali
 4. Repeatability gate: rerun the same pinned configuration; all required gates pass and metrics stay within case tolerances. Record model variability separately if the pipeline is stochastic.
 5. Visual gate: compare input and CAD from matched views; record reviewer, outcome, and concise findings. For `visual-pose-dog`, record an outcome and finding for every criterion in `case.json`.
 
+`visual-pose-dog/model.py` is deliberately a `Compound` of overlapping primitives (9 solids). `scripts/run_agent_cad.py` rejects multi-solid models by default, so run this fixture with `--allow-multiple-solids`.
+
 Report per-case and aggregate pass rates, failures, and unsupported inputs. A failed or unsupported case is data, not something to remove from the denominator after seeing the result. These two fixtures establish separate acceptance profiles, not general-purpose CAD accuracy or manufacturing readiness. The included manifest tests use synthetic file contents and do not substitute for running Open CASCADE, inspecting the STEP output, or independently judging the reference comparison.
 
 ## Current boundary

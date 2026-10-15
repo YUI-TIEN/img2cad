@@ -236,6 +236,37 @@ class AgentWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stale geometry artifact hash: comparison"):
             agent_workflow.promote(argparse.Namespace(workflow=self.workflow, name="test-dog", technique=["x"], dest=self.root / "library"))
 
+    def test_runner_arguments_are_validated_before_spending_a_revision(self) -> None:
+        self.record_inputs()
+        model = self.root / "model.py"
+        model.write_text("from build123d import Sphere\ndef build_model():\n    return Sphere(10)\n", encoding="utf-8")
+        agent_workflow.source_review(argparse.Namespace(workflow=self.workflow, model=model, inspection_note="checked"))
+        for kwargs, message in (
+            ({"cad_python": str(self.root / "missing-python"), "reference_view": None, "reference_mask": None}, "CAD interpreter not found"),
+            ({"cad_python": sys.executable, "reference_view": "0,0,0", "reference_mask": None}, "not-all-zero"),
+            ({"cad_python": sys.executable, "reference_view": None, "reference_mask": self.root / "missing.png"}, "reference mask not found"),
+        ):
+            with self.assertRaisesRegex((ValueError, argparse.ArgumentTypeError), message):
+                agent_workflow.run_geometry(argparse.Namespace(workflow=self.workflow, **kwargs))
+        state = agent_workflow.load_state(self.workflow)
+        self.assertEqual(agent_workflow.active(state)["stages"]["geometry"]["status"], "pending")
+
+    def test_runner_command_passes_negative_view_and_multi_solid_opt_in(self) -> None:
+        state = agent_workflow.load_state(self.workflow)
+        args = argparse.Namespace(cad_python=sys.executable, reference_view="-0.35,-1,0.35", reference_mask=None)
+        command = agent_workflow.runner_command(self.workflow, state, {"allow_multiple_solids": True}, self.root / "model.py", self.root / "out", args)
+        self.assertIn("--reference-view=-0.35,-1.0,0.35", command)
+        self.assertIn("--allow-multiple-solids", command)
+        self.assertNotIn("--allow-multiple-solids", agent_workflow.runner_command(self.workflow, state, {}, self.root / "model.py", self.root / "out", args))
+
+    def test_plan_rejects_non_boolean_multi_solid_flag(self) -> None:
+        observations = self.json_file("observations.json", {"observed": [], "inferred": [], "unknowns": []})
+        agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
+        plan = self.json_file("plan.json", {"target_type": "visual_approximation", "goal": "g", "geometry_plan": ["box"], "constraints": [], "unknowns": [],
+                                            "allow_multiple_solids": "yes"})
+        with self.assertRaisesRegex(ValueError, "allow_multiple_solids"):
+            agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
+
     def test_revision_can_replace_inherited_evidence_and_plan(self) -> None:
         self.record_inputs()
         state = agent_workflow.load_state(self.workflow)

@@ -61,5 +61,18 @@ class ExampleLibraryTests(unittest.TestCase):
                 self.assertAlmostEqual(inspection["volume"], summary["geometry"]["volume"], delta=1e-6 * summary["geometry"]["volume"])
 
 
+    @unittest.skipUnless(os.environ.get("IMG2CAD_CAD_PYTHON"), "set IMG2CAD_CAD_PYTHON to run the CAD gate")
+    def test_disjoint_solids_fail_the_geometry_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "model.py"
+            model.write_text("from build123d import Box, Pos, Sphere\n\ndef build_model():\n    return Box(40, 20, 20).fuse(Pos(0, 0, 30) * Sphere(8))\n", encoding="utf-8")
+            command = [os.environ["IMG2CAD_CAD_PYTHON"], "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(Path(temp) / "run"), "--cad-python", os.environ["IMG2CAD_CAD_PYTHON"]]
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("2 disjoint solids", result.stderr)
+            allowed = subprocess.run([*command[:4], str(Path(temp) / "run2"), *command[5:], "--allow-multiple-solids"], capture_output=True, text=True, check=False)
+            self.assertEqual(allowed.returncode, 0, allowed.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

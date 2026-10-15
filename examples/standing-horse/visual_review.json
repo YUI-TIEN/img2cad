@@ -1,0 +1,24 @@
+{
+  "assumptions": [
+    "body width and scale are estimates",
+    "the hidden-side ear and eye are mirrored from the visible side"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "barrel, neck, head, muzzle, ear, tail and four legs are present and placed as in the illustration",
+    "hind legs bend back at the hock like the reference",
+    "silhouette overlay shows only thin edge differences"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "7b12df9262f3842b570cd91fd9fd1e346250d2f64e3a1c1968db9c799731b5ad",
+  "reviewer": "agent",
+  "run_report_sha256": "bc7572db715e9a6b58c5e35ba5d24eb6fc461584f78c01bf10b82f2bb129848d",
+  "schema_version": 1,
+  "source_view": "Illustration side view compared with CAD Front (from -Y) panel; silhouette overlay checked",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}

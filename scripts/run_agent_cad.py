@@ -19,6 +19,7 @@ from build123d import import_step
 from PIL import Image, ImageDraw, ImageFont
 
 from agent_cad_worker import parse_model_source
+from cli_args import join_negative_option_values, parse_view
 from inspect_step import inspect_step
 from silhouette import compare as compare_silhouettes
 
@@ -68,10 +69,12 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
     inv_sqrt3 = 1 / math.sqrt(3)
     inv_sqrt6 = 1 / math.sqrt(6)
     views = [
-        ("Side · X/Z", (0, 1, 0), (1, 0, 0), (0, 0, 1)),
-        ("Front · Y/Z", (1, 0, 0), (0, 1, 0), (0, 0, 1)),
-        ("Top · X/Y", (0, 0, 1), (1, 0, 0), (0, 1, 0)),
-        ("Isometric", (inv_sqrt3, -inv_sqrt3, inv_sqrt3), (inv_sqrt2, inv_sqrt2, 0), (-inv_sqrt6, inv_sqrt6, 2 * inv_sqrt6)),
+        # (title, model-to-camera direction, screen right, screen up). Each is a
+        # true camera view: the camera sits along the direction and looks back.
+        ("Front · from -Y (X right, Z up)", (0, -1, 0), (1, 0, 0), (0, 0, 1)),
+        ("Right · from +X (Y right, Z up)", (1, 0, 0), (0, 1, 0), (0, 0, 1)),
+        ("Top · from +Z (X right, Y up)", (0, 0, 1), (1, 0, 0), (0, 1, 0)),
+        ("Isometric · from +X -Y +Z", (inv_sqrt3, -inv_sqrt3, inv_sqrt3), (inv_sqrt2, inv_sqrt2, 0), (-inv_sqrt6, inv_sqrt6, 2 * inv_sqrt6)),
     ]
     if reference_view is not None:
         direction = np.asarray(reference_view, dtype=np.float64)
@@ -82,7 +85,8 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
         screen_right = np.cross(world_up, direction)
         screen_right /= np.linalg.norm(screen_right)
         screen_up = np.cross(direction, screen_right)
-        views[-1] = ("Manual reference view", tuple(direction), tuple(screen_right), tuple(screen_up))
+        label = ", ".join(f"{value:g}" for value in reference_view)
+        views[-1] = (f"Reference view · from ({label})", tuple(direction), tuple(screen_right), tuple(screen_up))
     width, height = 1280, 900
     image = Image.new("RGB", (width, height), "#f3f6fa")
     draw = ImageDraw.Draw(image)
@@ -90,9 +94,6 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
     title_font = load_font(25)
     masks: dict[str, np.ndarray] = {}
     draw.text((40, 24), "img2cad · STEP preview", fill="#18324b", font=title_font)
-    light = (0.42, 0.58, 0.70)
-    light_len = math.sqrt(sum(value * value for value in light))
-    light = tuple(value / light_len for value in light)
     base = (202, 156, 102)
 
     for index, (title, direction, right, up) in enumerate(views):
@@ -118,7 +119,10 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
         screen_y = np.rint(offset_y - projected_y * scale).astype(np.int32)
         zbuffer = np.full((panel_h, panel_w), -np.inf, dtype=np.float64)
         pixels = np.full((panel_h, panel_w, 3), (255, 255, 255), dtype=np.uint8)
-        light_vec = np.asarray(light, dtype=np.float64)
+        # Key light from the camera side, slightly above and to the left, so
+        # every panel shows the faces it looks at.
+        light_vec = 0.75 * view_direction + 0.5 * screen_up - 0.3 * screen_right
+        light_vec /= np.linalg.norm(light_vec)
         for face in faces:
             ids = face.tolist()
             tri_x = screen_x[ids]
@@ -149,7 +153,7 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
             world = coords[ids]
             normal = np.cross(world[1] - world[0], world[2] - world[0])
             normal_len = float(np.linalg.norm(normal)) or 1.0
-            diffuse = max(0.0, float(np.dot(normal / normal_len, light_vec)))
+            diffuse = abs(float(np.dot(normal / normal_len, light_vec)))
             brightness = 0.64 + 0.36 * diffuse
             color = np.asarray([int(channel * brightness) for channel in base], dtype=np.uint8)
             region_z[visible] = depths[visible]
@@ -220,8 +224,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     step_path = run_dir / "model.step"
     inspection = inspect_step(step_path)
+    (run_dir / "inspection.json").write_text(json.dumps(inspection, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if inspection["status"] != "passed":
         raise RuntimeError("STEP inspection failed: B-rep invalid or no positive-volume solid")
+    if inspection["solid_count"] > 1 and not args.allow_multiple_solids:
+        details = "; ".join(f"solid {index + 1}: volume {item['volume']:.1f}, center {item['center']}, size {item['size']}" for index, item in enumerate(inspection["solids"]))
+        raise RuntimeError(
+            f"model has {inspection['solid_count']} disjoint solids, expected 1. Either parts do not touch/overlap "
+            f"(a floating part) or a boolean fuse silently failed. Make parts overlap and fuse them, or declare "
+            f"\"allow_multiple_solids\": true in the plan for an intentional multi-body model. {details}")
     preview_path = run_dir / "preview.png"
     view_masks = raster_preview(step_path, preview_path, args.mesh_tolerance, args.reference_view)
 
@@ -237,7 +248,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         comparison_path = run_dir / "comparison.png"
         make_comparison(local_reference, preview_path, comparison_path)
         silhouette_path = run_dir / "silhouette.png"
-        silhouette = compare_silhouettes(local_reference, view_masks, silhouette_path)
+        local_mask = None
+        if args.reference_mask:
+            mask_source = args.reference_mask.expanduser().resolve()
+            if not mask_source.is_file():
+                raise FileNotFoundError(mask_source)
+            local_mask = run_dir / "reference_mask.png"
+            shutil.copyfile(mask_source, local_mask)
+        silhouette = compare_silhouettes(local_reference, view_masks, silhouette_path, local_mask)
     else:
         local_reference = None
         comparison_path = None
@@ -260,6 +278,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         report["reference"] = {"path": local_reference.name, "sha256": sha256(local_reference)}
         report["comparison"] = {"path": comparison_path.name, "sha256": sha256(comparison_path)}
         report["silhouette"] = silhouette
+        if local_mask is not None:
+            report["reference_mask"] = {"path": local_mask.name, "sha256": sha256(local_mask)}
         if silhouette_path.is_file():
             report["silhouette_overlay"] = {"path": silhouette_path.name, "sha256": sha256(silhouette_path)}
     report_path = run_dir / "run_report.json"
@@ -275,13 +295,13 @@ def main() -> int:
     parser.add_argument("--cad-python", default=sys.executable, help="Python interpreter with build123d and Pillow installed")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--mesh-tolerance", type=float, default=0.45)
-    parser.add_argument("--reference-view", type=lambda raw: tuple(float(value) for value in raw.split(",")), help="manual model-to-camera direction x,y,z; replaces isometric panel")
-    args = parser.parse_args()
+    parser.add_argument("--reference-view", type=parse_view, help="direction from the model toward the camera as x,y,z (Z up); replaces the isometric panel")
+    parser.add_argument("--reference-mask", type=Path, help="optional PNG mask of the object in the reference image (white = object), same size as the reference")
+    parser.add_argument("--allow-multiple-solids", action="store_true", help="accept a model made of several disjoint solids")
+    args = parser.parse_args(join_negative_option_values(sys.argv[1:], ("--reference-view",)))
     try:
         if not math.isfinite(args.mesh_tolerance) or args.mesh_tolerance <= 0:
             raise ValueError("--mesh-tolerance must be positive")
-        if args.reference_view is not None and (len(args.reference_view) != 3 or not all(math.isfinite(value) for value in args.reference_view) or sum(value * value for value in args.reference_view) <= 0):
-            raise ValueError("--reference-view must be three finite, nonzero comma-separated direction values")
         report = run(args)
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
