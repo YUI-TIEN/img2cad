@@ -75,7 +75,7 @@ Render the generated CAD from the input camera/view where possible and from a sm
 
 ## MVP scope
 
-Start with the agent-led loop: inspect a user image, plan geometry, author a build123d model, run local checks, inspect a preview, and make a bounded correction. Include both a visual-model case (such as the supplied dog photo) and a dimensioned mechanical case, with different acceptance criteria. Defer guaranteed hidden-surface reconstruction and claims of production readiness without process-specific engineering checks.
+Start with the agent-led loop: inspect a user image, plan geometry, author a build123d model, run local checks, inspect a preview, and make a bounded correction. Include both a visual-model case (the frozen synthetic dog illustration) and a dimensioned mechanical case, with different acceptance criteria. Defer guaranteed hidden-surface reconstruction and claims of production readiness without process-specific engineering checks.
 
 ## Relationship to existing projects
 
@@ -96,11 +96,11 @@ For a supported test part with a reference image and known key dimensions:
 
 ## Suggested first prototype
 
-Use a supplied dog photo as an initial visual-model acceptance case: the agent should inspect the image, document estimated/unknown geometry, author a parametric organic CAD approximation, export and check it locally, inspect the preview, and revise once against the image. The reusable procedure and review record matter; a particular user's photo does not need to be committed to this repository. Keep a separate dimensioned mechanical case to measure exact constraints and STEP round-trip behavior. Neither case requires adding a third-party vision API solely to follow the workflow.
+Use the frozen synthetic dog illustration in `benchmark/cases/visual-pose-dog` as an initial visual-model acceptance case: inspect the image, document observed/inferred/unknown geometry, author an editable approximation, export and check it locally, inspect the preview, and record a separate finding for each visual criterion. It is an illustration fixture, not evidence of performance on real photographs. Keep `benchmark/cases/repro-block` as the separate dimensioned mechanical case for exact constraints and STEP round-trip behavior. Neither case requires adding a third-party vision API solely to follow the workflow.
 
 ## Repeatable validation
 
-The benchmark format and first local validation command are defined in [`benchmark/README.md`](benchmark/README.md). The validator checks case/run metadata, input and artifact hashes, required gate records, and whether two runs used the same pipeline configuration before comparing measured dimensions against tolerances. It is a reproducibility scaffold—not a CAD kernel; geometry and STEP round-trip checks must be performed by the CAD runner, with evidence recorded in the run.
+The benchmark format and local validation commands are defined in [`benchmark/README.md`](benchmark/README.md). Two frozen fixtures separate visual approximation (`benchmark/cases/visual-pose-dog`) from dimension-constrained CAD (`benchmark/cases/repro-block`). The validator checks case/run metadata, input and artifact hashes, per-case gates, criterion-level visual review, and dimension tolerances across repeat runs. It is a reproducibility scaffold—not a CAD kernel or an independent visual judge; geometry and STEP round-trip checks must be performed by the CAD runner, and visual criteria must be reviewed against the comparison image.
 
 ## Agent workflow
 

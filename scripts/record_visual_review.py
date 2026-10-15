@@ -66,10 +66,27 @@ def record(run_dir: Path, notes_path: Path, previous_dir: Path | None = None) ->
     mismatches = nonempty_strings(notes.get("mismatches"), "mismatches")
     changes = nonempty_strings(notes.get("next_changes"), "next_changes")
     assumptions = nonempty_strings(notes.get("assumptions"), "assumptions")
+    criteria = notes.get("criteria", [])
+    if not isinstance(criteria, list):
+        raise ValueError("criteria must be a list")
+    criterion_ids: set[str] = set()
+    for criterion in criteria:
+        if not isinstance(criterion, dict):
+            raise ValueError("each criterion evaluation must be an object")
+        criterion_id = criterion.get("id")
+        if not isinstance(criterion_id, str) or not criterion_id or criterion_id in criterion_ids:
+            raise ValueError(f"criterion id missing or duplicated: {criterion_id}")
+        if criterion.get("outcome") not in {"pass", "fail"}:
+            raise ValueError(f"criterion {criterion_id} outcome must be pass or fail")
+        if not isinstance(criterion.get("findings"), str) or not criterion["findings"].strip():
+            raise ValueError(f"criterion {criterion_id} findings must be nonempty")
+        criterion_ids.add(criterion_id)
     if verdict == "revise" and (not mismatches or not changes):
         raise ValueError("a revise verdict requires mismatches and next_changes")
     if verdict == "acceptable" and mismatches:
         raise ValueError("an acceptable verdict cannot leave recorded mismatches unresolved")
+    if verdict == "acceptable" and any(item["outcome"] != "pass" for item in criteria):
+        raise ValueError("an acceptable verdict requires every recorded criterion to pass")
 
     previous: dict[str, str] | None = None
     if previous_dir is not None:
@@ -101,6 +118,7 @@ def record(run_dir: Path, notes_path: Path, previous_dir: Path | None = None) ->
         "mismatches": mismatches,
         "next_changes": changes,
         "assumptions": assumptions,
+        "criteria": criteria,
         "previous": previous,
     }
     with output.open("x", encoding="utf-8") as stream:

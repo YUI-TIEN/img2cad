@@ -8,7 +8,7 @@
     "schema_version": {"const": 1},
     "case_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
     "revision": {"type": "integer", "minimum": 1},
-    "task_kind": {"enum": ["photo_to_part", "drawing_to_part", "sketch_to_part"]},
+    "task_kind": {"enum": ["photo_to_part", "visual_reference_to_part", "drawing_to_part", "sketch_to_part"]},
     "supported": {"type": "boolean", "default": true},
     "input_views": {"type": "object", "additionalProperties": {"enum": ["front", "side", "top", "isometric", "drawing", "unknown"]}},
     "source_files": {
@@ -28,6 +28,9 @@
           "status": {"enum": ["user_confirmed", "drawing_dimension", "reference_measurement"]}
         }, "additionalProperties": false}},
         "expected_solid_count": {"type": ["integer", "null"], "minimum": 1},
+        "visual_criteria": {"type": "array", "items": {"type": "object", "required": ["id", "description"], "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"}, "description": {"type": "string", "minLength": 1}
+        }, "additionalProperties": false}},
         "notes": {"type": "string"}
       }, "additionalProperties": false
     },

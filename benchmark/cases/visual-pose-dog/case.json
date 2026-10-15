@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "visual-pose-dog",
+  "revision": 1,
+  "task_kind": "visual_reference_to_part",
+  "supported": true,
+  "input_views": {"dog-reference.png": "side"},
+  "source_files": [
+    {"role": "input_image", "path": "dog-reference.png", "sha256": "7b8dfb3003a0918eefa7c1b5cf0aaa5719e2ccc28ae64121583be64c003ee7de"},
+    {"role": "other", "path": "model_plan.json", "sha256": "952added74eb68e5c5363deb116f8535e8622e1291469a0bf861c2bed124017b"},
+    {"role": "other", "path": "model.py", "sha256": "f0a1c1dd9c2ae9d5c6a2879afc3bc56d8cdc20e861af2b3ddc57a182e1cc1829"}
+  ],
+  "requirements": {
+    "units": "mm (agent-chosen modeling convention; no physical scale is asserted)",
+    "dimensions": [],
+    "visual_criteria": [
+      {"id": "body-silhouette", "description": "The torso reads as a long, low oval rather than a block or sphere."},
+      {"id": "head-and-muzzle", "description": "The raised forward head and short muzzle are visibly distinct and correctly placed."},
+      {"id": "legs-and-tail", "description": "Four legs sit beneath the torso and a tail remains behind the body; note occlusion or ambiguity."}
+    ],
+    "notes": "Synthetic side-view illustration for visual-approximation acceptance. Record estimated dimensions only as estimates; visual review is separate from geometry/STEP success."
+  },
+  "required_gates": ["model_build", "step_roundtrip", "visual_review"]
+}

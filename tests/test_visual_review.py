@@ -84,6 +84,23 @@ class VisualReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not a regular file for reference"):
             record(run_dir, self.notes("r1-notes.json", "blocked"))
 
+    def test_criterion_findings_are_bound_into_visual_review_artifact(self) -> None:
+        run_dir = self.run_fixture("criteria", "source-v1")
+        notes = self.root / "criteria-notes.json"
+        notes.write_text(json.dumps({
+            "reviewer": "agent",
+            "verdict": "acceptable",
+            "source_view": "side-by-side",
+            "matches": ["body silhouette"],
+            "mismatches": [],
+            "next_changes": [],
+            "assumptions": ["scale estimated"],
+            "criteria": [{"id": "body", "outcome": "pass", "findings": "oval profile retained"}],
+        }), encoding="utf-8")
+        path = record(run_dir, notes)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["criteria"], [{"id": "body", "outcome": "pass", "findings": "oval profile retained"}])
+
 
 if __name__ == "__main__":
     unittest.main()

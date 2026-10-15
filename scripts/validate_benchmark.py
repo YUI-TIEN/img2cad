@@ -15,7 +15,7 @@ from typing import Any
 
 
 HEX_256 = re.compile(r"^[a-f0-9]{64}$")
-REQUIRED_GATES = {"spec_valid", "model_build", "step_roundtrip", "explicit_dimensions", "visual_review"}
+ALLOWED_GATES = {"spec_valid", "model_build", "step_roundtrip", "explicit_dimensions", "visual_review"}
 
 
 class ValidationError(Exception):
@@ -60,7 +60,7 @@ def validate_case(case_dir: Path) -> dict[str, Any]:
     require(case.get("schema_version") == 1, "case schema_version must be 1")
     require(bool(re.fullmatch(r"[a-z0-9][a-z0-9._-]*", str(case.get("case_id", "")))), "case_id must be lowercase kebab/snake-safe text")
     require(isinstance(case.get("revision"), int) and case["revision"] >= 1, "revision must be an integer >= 1")
-    require(case.get("task_kind") in {"photo_to_part", "drawing_to_part", "sketch_to_part"}, "unsupported task_kind")
+    require(case.get("task_kind") in {"photo_to_part", "visual_reference_to_part", "drawing_to_part", "sketch_to_part"}, "unsupported task_kind")
     files = case.get("source_files")
     require(isinstance(files, list) and bool(files), "source_files must be a non-empty array")
     source_hashes: dict[str, str] = {}
@@ -89,9 +89,26 @@ def validate_case(case_dir: Path) -> dict[str, Any]:
         require(isinstance(tolerance, (int, float)) and math.isfinite(tolerance) and tolerance >= 0, f"dimension {name} tolerance must be finite and >= 0")
         require(dim.get("status") in {"user_confirmed", "drawing_dimension", "reference_measurement"}, f"dimension {name} needs a grounded status")
         names.add(name)
+    visual_criteria = req.get("visual_criteria", [])
+    require(isinstance(visual_criteria, list), "requirements.visual_criteria must be an array")
+    criterion_ids: set[str] = set()
+    for criterion in visual_criteria:
+        require(isinstance(criterion, dict), "each visual criterion must be an object")
+        criterion_id, description = criterion.get("id"), criterion.get("description")
+        require(isinstance(criterion_id, str) and criterion_id and criterion_id not in criterion_ids, f"visual criterion id missing or duplicated: {criterion_id}")
+        require(isinstance(description, str) and description.strip(), f"visual criterion {criterion_id} needs a description")
+        criterion_ids.add(criterion_id)
+    require(bool(dimensions or visual_criteria), "case needs at least one explicit dimension or visual criterion")
     gates = case.get("required_gates")
     require(isinstance(gates, list) and bool(gates), "required_gates must be a non-empty array")
-    require(set(gates) <= REQUIRED_GATES and len(set(gates)) == len(gates), "required_gates contains an unknown or duplicate gate")
+    require(set(gates) <= ALLOWED_GATES and len(set(gates)) == len(gates), "required_gates contains an unknown or duplicate gate")
+    require({"model_build", "step_roundtrip", "visual_review"} <= set(gates), "all cases require model_build, step_roundtrip, and visual_review gates")
+    if dimensions:
+        require("explicit_dimensions" in gates, "dimensioned cases require the explicit_dimensions gate")
+    else:
+        require("explicit_dimensions" not in gates, "visual-only cases must not claim an explicit_dimensions gate")
+    if visual_criteria:
+        require("visual_review" in gates, "visual criteria require the visual_review gate")
     return case
 
 
@@ -120,15 +137,17 @@ def validate_run(run_dir: Path, case_dir: Path) -> tuple[dict[str, Any], dict[st
     artifacts = run.get("artifacts")
     require(isinstance(artifacts, list), "artifacts must be an array")
     roles: set[str] = set()
+    artifacts_by_role: dict[str, list[tuple[dict[str, Any], Path]]] = {}
     for artifact in artifacts:
         require(isinstance(artifact, dict), "each artifact must be an object")
         role, rel, expected = artifact.get("role"), artifact.get("path"), artifact.get("sha256")
-        require(role in {"spec", "model_source", "step", "preview", "validation_report"}, f"invalid artifact role: {role}")
+        require(role in {"spec", "model_source", "step", "preview", "validation_report", "visual_review"}, f"invalid artifact role: {role}")
         require(role not in roles or role == "preview", f"duplicate artifact role: {role}")
         require(isinstance(rel, str) and rel, f"artifact path required for {role}")
         require(isinstance(expected, str) and HEX_256.fullmatch(expected), f"invalid artifact SHA-256 for {rel}")
         require(sha256(safe_file(run_dir, rel)) == expected, f"artifact hash mismatch: {rel}")
         roles.add(role)
+        artifacts_by_role.setdefault(role, []).append((artifact, safe_file(run_dir, rel)))
     require("spec" in roles and "model_source" in roles and "step" in roles, "run must retain spec, model_source, and STEP artifacts")
 
     measurements = run.get("measurements")
@@ -155,6 +174,41 @@ def validate_run(run_dir: Path, case_dir: Path) -> tuple[dict[str, Any], dict[st
         review = run.get("review")
         require(isinstance(review, dict) and isinstance(review.get("reviewer"), str) and bool(review["reviewer"]), "visual review requires a named reviewer")
         require(review.get("outcome") == "pass" and isinstance(review.get("findings"), str), "visual review record must include outcome=pass and findings")
+        require("visual_review" in artifacts_by_role, "visual review must be retained as a hash-verified artifact")
+        visual_doc = read_json(artifacts_by_role["visual_review"][0][1])
+        require(visual_doc.get("reviewer") == review["reviewer"], "reviewer does not match the hash-verified visual review artifact")
+        artifact_verdict = visual_doc.get("outcome", visual_doc.get("verdict"))
+        require(artifact_verdict in {"pass", "acceptable"}, "hash-verified visual review artifact is not accepted")
+
+        declared = {entry["path"]: entry["sha256"] for entry in case["source_files"]}
+        preview_hashes = {item[0]["sha256"] for item in artifacts_by_role.get("preview", [])}
+        if "preview_sha256" in visual_doc:
+            require(visual_doc.get("preview_sha256") in preview_hashes, "visual review is not bound to a run preview")
+            require(visual_doc.get("input_image_hashes") == declared, "visual review source hashes do not match the frozen case")
+        else:
+            report_artifacts = artifacts_by_role.get("validation_report", [])
+            require(bool(report_artifacts), "visual review must bind either the preview/input hashes or a geometry report containing them")
+            require(visual_doc.get("run_report_sha256") in {item[0]["sha256"] for item in report_artifacts}, "visual review is not bound to a hash-verified geometry report")
+            image_hashes = {value for name, value in declared.items() if next((entry["role"] for entry in case["source_files"] if entry["path"] == name), None) in {"input_image", "drawing"}}
+            require(visual_doc.get("reference_sha256") in image_hashes, "visual review reference does not match a frozen image/drawing")
+
+        expected_criteria = {item["id"] for item in case["requirements"].get("visual_criteria", [])}
+        if expected_criteria:
+            evaluations = review.get("criteria")
+            require(isinstance(evaluations, list), "visual review must evaluate each case visual criterion")
+            observed: dict[str, dict[str, Any]] = {}
+            for evaluation in evaluations:
+                require(isinstance(evaluation, dict), "each visual criterion evaluation must be an object")
+                criterion_id = evaluation.get("id")
+                require(isinstance(criterion_id, str) and criterion_id not in observed, f"visual review criterion missing or duplicated: {criterion_id}")
+                observed[criterion_id] = evaluation
+            require(observed.keys() == expected_criteria, "visual review criteria must exactly match the case criteria")
+            for criterion_id, evaluation in observed.items():
+                require(evaluation.get("outcome") == "pass", f"visual criterion {criterion_id} is not accepted")
+                require(isinstance(evaluation.get("findings"), str) and evaluation["findings"].strip(), f"visual criterion {criterion_id} needs reviewer findings")
+            artifact_evaluations = visual_doc.get("criteria")
+            require(isinstance(artifact_evaluations, list), "hash-verified visual review artifact must retain every case criterion")
+            require(artifact_evaluations == review["criteria"], "criterion findings differ from the hash-verified visual review artifact")
     return case, run
 
 
