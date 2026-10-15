@@ -127,6 +127,50 @@ class ExampleLibraryTests(unittest.TestCase):
             self.assertGreater(regions["#f5f5f2"]["iou"], 0.95, regions)
 
 
+    @unittest.skipUnless(os.environ.get("IMG2CAD_CAD_PYTHON"), "set IMG2CAD_CAD_PYTHON to run the CAD gate")
+    def test_angled_frame_projects_decals_and_overlay_from_the_photo_camera(self) -> None:
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            # Camera 45 degrees above the front. A sphere of radius 100 centred at
+            # model z = 100 still images as a disc; with the origin at pixel
+            # (200, 270.71) its centre lands on pixel (200, 200).
+            image = Image.new("RGB", (400, 400), (90, 110, 140))
+            draw = ImageDraw.Draw(image)
+            draw.ellipse((100, 100, 300, 300), fill=(245, 245, 242))
+            draw.ellipse((160, 150, 200, 190), fill=(20, 20, 20))
+            image.save(root / "reference.png")
+            model = root / "model.py"
+            model.write_text(
+                "import math\n"
+                "from build123d import *\n"
+                "from img2cad_lib import ImageFrame, projected_decal\n\n"
+                "IMAGE_FRAME = ImageFrame(mm_per_px=1, origin_px=(200, 200 + 100 / math.sqrt(2)), view=(0, -1, 1))\n"
+                "SPOT = [(180 + 20 * math.cos(a / 10), 170 + 20 * math.sin(a / 10)) for a in range(63)]\n\n"
+                "def build_model():\n"
+                "    assert max(abs(a - b) for a, b in zip(IMAGE_FRAME.project(0, 0, 100), (200, 200))) < 1e-9\n"
+                "    x, y, z = IMAGE_FRAME.on_plane_z(*IMAGE_FRAME.project(30, -40, 0), z=0)\n"
+                "    assert abs(x - 30) < 1e-9 and abs(y + 40) < 1e-9\n"
+                "    head = Pos(0, 0, 100) * Sphere(100)\n"
+                "    head.color, head.label = Color(0.96, 0.96, 0.95), 'head'\n"
+                "    spot = projected_decal(head, SPOT, IMAGE_FRAME, 2)\n"
+                "    spot.color, spot.label = Color(0.08, 0.08, 0.08), 'spot'\n"
+                "    return Compound(children=[head, spot])\n", encoding="utf-8")
+            result = subprocess.run([os.environ["IMG2CAD_CAD_PYTHON"], "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(root / "run"),
+                                     "--reference", str(root / "reference.png"), "--cad-python", os.environ["IMG2CAD_CAD_PYTHON"],
+                                     "--mesh-formats", "none"], capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads((root / "run/run_report.json").read_text(encoding="utf-8"))
+            regions = report["registered"]["color_regions"]
+            self.assertGreater(regions["#141414"]["iou"], 0.85, regions)
+            self.assertGreater(regions["#f5f5f2"]["iou"], 0.95, regions)
+            inspection = json.loads((root / "run/inspection.json").read_text(encoding="utf-8"))
+            spot = next(part for part in inspection["parts"] if part["label"] == "spot")
+            # Projected along the camera ray, the spot lands on the upper front of the sphere, not on its equator.
+            self.assertGreater(spot["center"][2], 100)
+            self.assertLess(spot["center"][1], 0)
+
+
     @unittest.skipUnless(os.environ.get("IMG2CAD_CAD_PYTHON"), "set IMG2CAD_CAD_PYTHON to run the CAD exports")
     def test_runs_export_coloured_glb_and_3mf_and_stl(self) -> None:
         import struct

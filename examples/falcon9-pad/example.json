@@ -1,0 +1,164 @@
+{
+  "dimension_checks": "not_applicable",
+  "file_sha256": {
+    "comparison.png": "b8fde9e025ea83a647db341da798f953bff7eb8d855b038da64e9c2f5a604bf9",
+    "model.glb": "c30d3e9fe9d560449b5fbbdfcefd3d7f2946b4de06afab095b37e3d5c89caf8f",
+    "model.py": "102ee085460be605d6e94d3479334d04c91d8ab0e09d8a4b962f2d02649416da",
+    "observations.json": "2921605087ffb85a1740ac8b009eed39cb5e5ccff93557cba4672ba2bd8b29f4",
+    "plan.json": "8f165d599b7dd530ecdef6012c0a8a124e7387124b9c4efc1d3498207aa1ba0c",
+    "reference.png": "9f0197f9f9346f866c6a737f32fcba8dc222e20acc5b3ecf4888e47ebcb29477",
+    "registered.png": "6309bb9973c981964ba8796a019dd4f410fe123c4d8beb75939569f48a712cd9",
+    "silhouette.png": "033300a6631e0ed9ad598328ed1527ce5dc86bf62c969c572f7a917772535886",
+    "visual_review.json": "0b02b2c156e543419577aa7b6371f8f8b892ec2e72d7b7353e9dc65399187b36"
+  },
+  "final_revision": "r001",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 3660.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 5200.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      }
+    ],
+    "dimensions": {
+      "x": 80000.0,
+      "y": 16000.0,
+      "z": 76700.0
+    },
+    "solid_count": 8,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 4050797706089.594
+  },
+  "human_acceptance": "not_verified",
+  "name": "falcon9-pad",
+  "reference_sha256": "9f0197f9f9346f866c6a737f32fcba8dc222e20acc5b3ecf4888e47ebcb29477",
+  "registered": {
+    "color_regions": {
+      "#38383d": {
+        "cad_px": 764,
+        "iou": 0.0042,
+        "photo_px": 4048
+      },
+      "#6b665c": {
+        "cad_px": 0,
+        "iou": 0.0,
+        "photo_px": 1121
+      },
+      "#736654": {
+        "cad_px": 4340,
+        "iou": 0.0838,
+        "photo_px": 1844
+      },
+      "#b2b2ad": {
+        "cad_px": 508,
+        "iou": 0.0,
+        "photo_px": 588
+      },
+      "#c7a873": {
+        "cad_px": 2464,
+        "iou": 0.4477,
+        "photo_px": 4265
+      },
+      "#ebebe3": {
+        "cad_px": 4188,
+        "iou": 0.0528,
+        "photo_px": 398
+      }
+    },
+    "frame": {
+      "mm_per_px": 246.0,
+      "origin_px": [
+        321.5,
+        405.0
+      ],
+      "view": "front (camera on -Y)"
+    },
+    "subject": "CAD silhouette"
+  },
+  "revisions": [
+    {
+      "dimensions": "not_applicable",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.1396,
+    "best_view": "Isometric \u00b7 from +X -Y +Z",
+    "border_foreground_fraction": 0.1386,
+    "boundary_roughness": 48.89,
+    "component_count": 538,
+    "largest_component_share": 0.2381,
+    "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.1386,
+    "reliable": false,
+    "unreliable_reasons": [
+      "foreground is fragmented: largest blob is 24% of it across 538 blobs",
+      "outline is speckled or full of holes (boundary roughness 48.9, expected <= 10)",
+      "foreground touches 14% of the image border (background not separated)"
+    ],
+    "views": {
+      "Front \u00b7 from -Y (X right, Z up)": {
+        "iou": 0.138,
+        "mirrored": false
+      },
+      "Isometric \u00b7 from +X -Y +Z": {
+        "iou": 0.1396,
+        "mirrored": true
+      },
+      "Right \u00b7 from +X (Y right, Z up)": {
+        "iou": 0.1332,
+        "mirrored": false
+      },
+      "Top \u00b7 from +Z (X right, Y up)": {
+        "iou": 0.0876,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "visual_approximation",
+  "techniques": [
+    "known object dimensions (Falcon 9 v1.1) as the scale",
+    "lattice tower as one solid: lofted frustum shell with triangular X-brace windows cut through",
+    "front orthographic IMAGE_FRAME for a distant, level camera"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "target_type": "visual_approximation",
+  "goal": "Editable, coloured CAD of the espresso set registered to the photo's own camera, so the overlay can be scored per colour region",
+  "geometry_plan": [
+    "Decompose: saucer (revolved), cup body (revolved, red), cup glaze (thin white revolved lining and rim), espresso (revolved fill), handle (ring fused to the body), spoon (bowl + handle, two parts)",
+    "Measure the main bodies: fit a perspective IMAGE_FRAME to the cup rim, saucer rim and cup foot (three circles), then solve the cup's side profile from silhouette edges through that frame",
+    "Use typical sizes for the small parts: a 105 mm teaspoon lying in the saucer with its handle on the rim, anchored on its bowl and handle-end pixels",
+    "Handle: ring centre solved so it projects onto the handle in the photo",
+    "Assumed scale: 120 mm saucer"
+  ],
+  "constraints": [],
+  "unknowns": [
+    "absolute scale",
+    "hidden back and underside",
+    "perspective residual"
+  ]
+}

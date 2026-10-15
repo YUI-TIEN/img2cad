@@ -1,9 +1,11 @@
 # Worked examples
 
-Each directory is a complete, accepted `scripts/agent_workflow.py` run copied here with `promote`, so an agent can see the whole chain: **image → observations → plan → build123d source → checks → comparison → review**. Read the example closest to your task before modeling. The references are synthetic (drawn for this repo), not real photos.
+Each directory is a complete, accepted `scripts/agent_workflow.py` run copied here with `promote`, so an agent can see the whole chain: **image → observations → plan → build123d source → checks → comparison → review**. Read the example closest to your task before modeling. `espresso-cup` and `falcon9-pad` start from real public-domain photos (credits in each README). The others use references drawn for this repo.
 
 | Example | Target | Main technique | Read it for |
 |---|---|---|---|
+| [`espresso-cup`](espresso-cup/) | visual approximation, coloured, **real photo** | perspective `IMAGE_FRAME` fitted to three circles; profile solved from silhouette edges; spline revolves; typical-size teaspoon | angled close-up photos; measuring through a fitted camera; deciding what to measure and what to take from typical sizes |
+| [`falcon9-pad`](falcon9-pad/) | visual approximation, coloured, **real photo** | published rocket dimensions as scale; lattice towers as one cut shell | scenes with a known object; trusses, towers, lattices; judging by overlay when colours mislead |
 | [`mounting-plate`](mounting-plate/) | dimension-constrained | `Box` + `fillet` + `GridLocations`/`Hole` | prismatic parts with hole patterns, reading a dimensioned drawing, hole/volume constraints |
 | [`flanged-bushing`](flanged-bushing/) | dimension-constrained | half-profile + `revolve` | turned/round parts, bores, boss/hole constraints |
 | [`vase`](vase/) | visual approximation | silhouette-measured `Spline` + `revolve` + `offset` shell | round organic objects from one front view, hollow parts |

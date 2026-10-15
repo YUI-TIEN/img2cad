@@ -1,0 +1,186 @@
+{
+  "dimension_checks": "not_applicable",
+  "file_sha256": {
+    "comparison.png": "4f990d410d78a21dbc3a994431d93d204931d3fa2556f3e61934657ad9073ade",
+    "model.glb": "662620947780a8a2cfab1a6dcba7e93f19ea3bd005938cebfc9a396e1587da7d",
+    "model.py": "fa8f8e5b53758338d3010b771604a294ac558c2cde4700b8b8957ef084902423",
+    "observations.json": "c1141d636bc921a3c065d75334e13c21145965e687308261d3db70de43526fcf",
+    "plan.json": "2ad18f71b962a2d204f37a5fba08295dac405f96fbc6a73490430c296a5b8af4",
+    "reference.png": "cc02f8ca188b167c775a7101b5d767d1e71792cf762c33d6fa15a4599b5a8de7",
+    "registered.png": "554f47eb2a26f620d6f41b2f44f7791785c3b42149b868d2877ed581426932c9",
+    "silhouette.png": "69b83e6b94a7adeb4719f2a498fbf5c98e49ef743c882be444a7f791386ed535",
+    "visual_review.json": "c32177f8a6e88b64e3ef69c5cb4bb79debe0bb99b3105faba1a89570f5e88e92"
+  },
+  "final_revision": "r001",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [
+      {
+        "axis_direction": [
+          0.125677,
+          0.988749,
+          0.081116
+        ],
+        "axis_point": [
+          34.225196,
+          -5.039138,
+          8.396938
+        ],
+        "diameter": 3.6,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          -0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 68.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      },
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 60.0,
+        "faces": 1,
+        "full": true,
+        "kind": "hole",
+        "sweep": 1.0
+      }
+    ],
+    "dimensions": {
+      "x": 120.0,
+      "y": 121.08946586714461,
+      "z": 53.7500001
+    },
+    "solid_count": 6,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 129652.67279910647
+  },
+  "human_acceptance": "not_verified",
+  "name": "espresso-cup",
+  "reference_sha256": "cc02f8ca188b167c775a7101b5d767d1e71792cf762c33d6fa15a4599b5a8de7",
+  "registered": {
+    "color_regions": {
+      "#941f0a": {
+        "cad_px": 71401,
+        "iou": 0.7447,
+        "photo_px": 66394
+      },
+      "#b2b2b5": {
+        "cad_px": 7381,
+        "iou": 0.1296,
+        "photo_px": 8951
+      },
+      "#cc803d": {
+        "cad_px": 13161,
+        "iou": 0.3626,
+        "photo_px": 24842
+      },
+      "#f2e6d6": {
+        "cad_px": 24140,
+        "iou": 0.5037,
+        "photo_px": 16402
+      }
+    },
+    "frame": {
+      "camera_distance": 629.5,
+      "mm_per_px": 0.301,
+      "origin_px": [
+        276.009,
+        235.405
+      ],
+      "screen_right": [
+        1.0,
+        0.0,
+        -0.0
+      ],
+      "screen_up": [
+        0.0,
+        0.8401219549197898,
+        0.5423975487239509
+      ],
+      "view": "camera toward (0.0, -0.5423975487239509, 0.8401219549197898), roll 0",
+      "view_direction": [
+        0.0,
+        -0.5423975487239509,
+        0.8401219549197898
+      ]
+    },
+    "silhouette_iou": 0.9794,
+    "subject": "reference mask"
+  },
+  "revisions": [
+    {
+      "dimensions": "not_applicable",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.9541,
+    "best_view": "Reference view \u00b7 from (0, -0.542, 0.84)",
+    "border_foreground_fraction": 0.0109,
+    "boundary_roughness": 3.26,
+    "component_count": 1,
+    "largest_component_share": 1.0,
+    "method": "provided reference mask; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.4856,
+    "reliable": true,
+    "unreliable_reasons": [],
+    "views": {
+      "Front \u00b7 from -Y (X right, Z up)": {
+        "iou": 0.3805,
+        "mirrored": false
+      },
+      "Reference view \u00b7 from (0, -0.542, 0.84)": {
+        "iou": 0.9541,
+        "mirrored": false
+      },
+      "Right \u00b7 from +X (Y right, Z up)": {
+        "iou": 0.3979,
+        "mirrored": false
+      },
+      "Top \u00b7 from +Z (X right, Y up)": {
+        "iou": 0.9047,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "visual_approximation",
+  "techniques": [
+    "perspective IMAGE_FRAME fitted to three circles (cup rim, saucer rim, foot) by least squares",
+    "side profile solved from silhouette edges through the fitted frame",
+    "spline revolves (not polygon revolves) so the handle ring fuses cleanly",
+    "small parts from typical sizes, anchored on pixels (teaspoon)",
+    "white glaze as a thin revolved part over the red body"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}

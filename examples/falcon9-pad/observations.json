@@ -1,0 +1,19 @@
+{
+  "observed": [
+    "Real photo (scikit-image 'rocket': SpaceX's DSCOVR launch, Falcon 9 on SLC-40, released by SpaceX into the public domain): a white Falcon 9 standing on its launch mount at dusk",
+    "Two lightning towers flank the rocket: tapered square steel lattices with X-bracing, a platform on top and a slender mast above it",
+    "Two larger lattice towers are cut off at the image edges",
+    "A dark transporter-erector strongback shows at the rocket's edges; the launch mount is a light block at the bottom",
+    "The camera is level with the pad and far away: verticals stay vertical"
+  ],
+  "inferred": [
+    "Scale from the rocket's published height (68.4 m) over image rows 127-405: 246 mm/px",
+    "Tower geometry measured with that scale: base 8.6 m, platform 3.7 m wide at 54 m, mast to 70 m, axes 32 m either side of the rocket",
+    "Towers are assumed to stand in the rocket's plane (their real distances differ)"
+  ],
+  "unknowns": ["depth of every object (single front view)", "the far edge towers (left out)", "strongback and mount detail"],
+  "evidence": [
+    {"claim": "Rocket dimensions", "source": "published Falcon 9 v1.1 figures: 68.4 m tall, 3.66 m core, 5.2 m fairing"},
+    {"claim": "Tower outlines", "source": "leg lines and platform/mast rows read on 4x zooms of each tower"}
+  ]
+}

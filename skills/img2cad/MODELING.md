@@ -116,6 +116,21 @@ Verified behaviour of build123d 0.13 (pinned in `requirements-cad.lock`):
 
 Model the object so the view that matches the image is easy to pick. For a side-view image, put the object's length on X with the visible side facing −Y, so the **Front** panel matches the image. `--reference-view x,y,z` replaces the isometric panel with a camera placed in direction (x, y, z) **from the model toward the camera** (Z up). Examples: `0,-1,0` is the Front panel; `-0.5,-1,0.4` is front-left, slightly above; `0.35,1,0.35` looks from the +Y side. Negative first values are fine (`--reference-view -0.5,-1,0.4`). The camera is orthographic, so photo perspective (near parts larger) cannot be matched exactly.
 
+### Registering an angled or close-up photo
+
+`IMAGE_FRAME` can carry the photo's own camera, so `registered.png` and `projected_decal` work from that viewpoint:
+
+```python
+IMAGE_FRAME = ImageFrame(mm_per_px=0.301, origin_px=(276.0, 235.4),
+                         view=(0, -cos(e), sin(e)),   # camera direction from the model, Z up (like --reference-view)
+                         roll=0.0,                    # degrees, for a tilted horizon
+                         distance=629.5)              # mm to the camera: perspective; omit for distant shots and drawings
+IMAGE_FRAME.project(x, y, z)       # model point -> image pixel
+IMAGE_FRAME.on_plane_z(px, py, z)  # image pixel -> the model point at height z on that pixel's ray
+```
+
+Fit these to things you know are circles or straight edges. The espresso example (`examples/espresso-cup/fit_camera.py`) fits elevation, distance, scale, origin and the cup's position, radius and height to hand-picked points on three circles. It uses `scipy.optimize.least_squares` and projects candidate circles with `project`. A single pixel gives a ray, not a point: anything whose depth is not pinned by a known circle, a floor or a contact stays ambiguous along that ray.
+
 ## Choosing a technique
 
 | What the image shows | Approach | Example |

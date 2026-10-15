@@ -1,0 +1,37 @@
+{
+  "observed": [
+    "Real photo (scikit-image 'coffee', CC0 by Rachel Michetti): an espresso cup on a saucer with a teaspoon, on a wooden table, seen from the front and well above",
+    "Cup and saucer have the same dark red-brown glaze; the cup's inside and the top of its rim are white",
+    "The cup holds espresso with an even tan crema surface",
+    "The cup's handle is a closed loop on the front-left side, about mid-height",
+    "A stainless teaspoon lies on the saucer at the front-right; its bowl faces up and its handle runs back along the right side of the cup to beyond the saucer rim",
+    "Both rims image as ellipses: fitted to hand-picked edge points, the cup rim is 243 x 194 px centred at (292, 112) and the saucer 406 x 342 px centred at (275, 223), both nearly level (roll under 4 degrees)"
+  ],
+  "inferred": [
+    "Perspective camera fitted to three circles (cup rim, saucer rim, cup foot arc): 57 degrees above the table, 0.63 m away, 2.3 px RMS",
+    "Scale 0.301 mm/px from an assumed 120 mm saucer, giving a 68 mm cup rim at 54 mm height and a 55 mm foot",
+    "Cup side profile from silhouette edges at four image rows, solved through the fitted frame; left and right agree within 2 mm",
+    "Crema about 26 mm below the rim, where the far and side edges of the crema give the same radius",
+    "The spoon lies in the saucer with its handle resting on the rim (scene reading); its exact depth is not recoverable from the photo"
+  ],
+  "unknowns": [
+    "True size (no scale reference in the photo; a typical saucer size is assumed)",
+    "Hidden back of the cup, the underside of the saucer and the foot ring",
+    "Exact handle cross-section and the spoon's thickness",
+    "Perspective: the photo is not orthographic, so near and far edges cannot both match exactly"
+  ],
+  "evidence": [
+    {
+      "claim": "Camera, scale, cup rim and foot",
+      "source": "least-squares fit of a perspective ImageFrame to 8 cup-rim, 10 saucer-rim and 5 foot-arc edge points (fit_camera.py)"
+    },
+    {
+      "claim": "Cup profile radii",
+      "source": "silhouette x at image rows 120, 150, 180, 200 solved for (r, z) through the frame (fit_profile.py)"
+    },
+    {
+      "claim": "Colours",
+      "source": "pixel samples: cup (90,13,4), saucer (150-193, 30-55, 9-19), rim (244,221,194), crema (232,148,55), spoon (144,152,153)"
+    }
+  ]
+}

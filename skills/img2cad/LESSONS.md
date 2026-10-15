@@ -10,6 +10,12 @@ Short, verified pitfalls collected from real runs. Read before modeling; add to 
 
 ## Geometry
 
+- **Check the STEP, not the in-memory shape.** A `Sphere(1).scale(...)` spoon bowl fused to a cylinder wrote a STEP whose bowl readers dropped (3174 → 696 mm³). The runner now re-imports the STEP and fails on any volume loss. Keep such pieces as separate parts. *(examples/espresso-cup)*
+- **Revolve splines, not dense polygons, before fusing.** A 64-segment polygon cup fused with a torus handle gave 2 solids and an invalid B-rep. The same profile as `Spline`s fused cleanly. *(examples/espresso-cup)*
+- **Revolving a sketch about an axis normal to its own plane gives zero volume.** A ring's tube section must lie in a plane that contains the ring's axis (e.g. section on `Plane.XY`, revolve about `Axis.Y`). *(examples/espresso-cup)*
+- **A lattice is one solid made by cutting, not fusing.** Loft a frustum shell, then cut triangular X-brace windows through its faces with prisms along X and Y. Nine braced bays come from one loft and one cut. *(examples/falcon9-pad)*
+- **build123d builder contexts do not cross function calls.** A `BuildSketch` opened inside a helper called from a `BuildPart` was not seen ("A face or sketch must be provided"). Use algebra mode in helpers (`plane * Polygon(...)`, `extrude(face, ...)`, `loft([...])`). *(img2cad_lib.projected_decal)*
+
 - **A model that splits into several solids is broken, and now fails the gate.** In blind tests on real photos, one agent's roof floated 5 units above the top storey (2 solids), and another's fuse of cones and joint spheres silently dropped most of a dog (4 solids, volume 32.5e6 → 0.24e6 mm³). Both had passed the old gate. Overlap parts instead of touching them, and read the per-solid volumes and centres in the error to find the stray piece. *(blind tests: castle, dog; examples/standing-horse)*
 - **Ball joints: turn the sphere's poles off the limb axis.** A default `Sphere` at the end of a vertical `Cone` made `fuse` leave an extra solid; `Pos(p) * Rot(90, 0, 0) * Sphere(r)` fused cleanly. *(examples/standing-horse, reproduced in isolation)*
 - **In a builder, place with `with Locations(...)`.** `with Pos(...)` raises `'Pos' object does not support the context manager protocol`, and `Pos(...) * Ellipse(...)` inside a `BuildSketch` silently adds the ellipse at the origin. *(examples/standing-horse; blind test: cat)*
@@ -37,6 +43,11 @@ Short, verified pitfalls collected from real runs. Read before modeling; add to 
 - **Register the image** with `IMAGE_FRAME` so the overlay shows exactly where the CAD sits on the photo; normalised silhouette scores hide scale and position errors. *(photo test: character statue)*
 
 ## Reading the image
+
+- **Measure the main bodies; use typical sizes for small parts.** On the espresso photo the cup and saucer were measured to a 0.98 registered silhouette. Solving the teaspoon's depth from pixel rays and contact took about six previews and stood it upright against the cup. Reading the scene ("it lies in the saucer") with a typical 105 mm spoon took one preview. Decompose first, give each part a size source (measured, known, estimated), and time-box a part to two previews. *(examples/espresso-cup)*
+- **One known object sets the scale.** Falcon 9's published 68.4 m height gave 246 mm/px for the whole pad scene. Everything else was measured at that scale. *(examples/falcon9-pad)*
+- **Angled close-up photos need a perspective frame fitted to known circles.** Fitting the cup rim, saucer rim and cup foot (all circles) gave the camera elevation and distance at 2.3 px RMS. An orthographic fit was almost as close in pixels but put the cup 16 mm behind the saucer centre. Without the foot arc, height and depth traded off along the rays and the cup came out 10 mm too tall. *(examples/espresso-cup)*
+- **Colour IoU can mislead under strong lighting.** At dusk the white rocket photographs tan. A cup's inner wall reflecting coffee reads as "crema". Judge such photos on the overlay outlines. *(examples/falcon9-pad, espresso-cup)*
 
 - **On real photos the automatic silhouette is usually unusable**: grass, trees, and backgrounds coloured like the subject (an orange cat on beige and wood) break the segmentation. The run now reports `reliable: false` with reasons; trace a polygon mask and pass `--reference-mask`. *(blind tests: dog, cat, castle)*
 - **Pick model axes so the matching panel is obvious.** For a side-view image, put length on X with the visible side toward −Y, and the Front panel matches the image. For an angled photo, set `--reference-view` to the camera direction; negative values such as `-0.5,-1,0.4` work. *(blind tests: castle, cat, dog)*

@@ -1,0 +1,12 @@
+{
+  "target_type": "visual_approximation",
+  "goal": "Editable, coloured CAD of the launch pad scene registered to the photo",
+  "geometry_plan": [
+    "Decompose: rocket (revolved), strongback (box), launch mount and pad slab (boxes), two lightning towers (lattice) with masts (cones)",
+    "Use known sizes for the rocket (published dimensions); measure the towers, whose sizes are not known",
+    "Each tower is one solid: a lofted square frustum shell with triangular X-brace windows cut through all four faces",
+    "Front orthographic IMAGE_FRAME at 246 mm/px, origin at the rocket base"
+  ],
+  "constraints": [],
+  "unknowns": ["depths", "far towers"]
+}
