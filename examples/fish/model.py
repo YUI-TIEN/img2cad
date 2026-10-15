@@ -1,7 +1,11 @@
-from build123d import BuildPart, BuildSketch, Color, Compound, Ellipse, Plane, Polygon, Pos, Sphere, extrude, loft
+from build123d import BuildPart, BuildSketch, Color, Compound, Ellipse, Plane, Polygon, extrude, loft, mirror
 
-# Visual approximation of a side-view illustration. 1 px ~ 0.4 mm, so the body
-# is 180 mm long. Thickness (Y) is not visible and is estimated.
+from img2cad_lib import ImageFrame, projected_decal
+
+# Visual approximation of a side-view illustration. 1 px = 0.4 mm, image pixel
+# (375, 260) is the model origin (body centre); camera on -Y. The body is
+# 180 mm long; thickness (Y) is not visible and is estimated.
+IMAGE_FRAME = ImageFrame(mm_per_px=0.4, origin_px=(375, 260))
 # Each section: (x position along the body, half-height in Z, half-width in Y).
 BODY_SECTIONS = [
     (-90, 4, 2),
@@ -15,12 +19,11 @@ BODY_SECTIONS = [
 FIN_THICKNESS = 2
 TAIL = [(70, 0), (130, 36), (118, 0), (130, -36)]
 DORSAL_FIN = [(-25, 30), (22, 60), (42, 30)]
-# Revision r002: the r001 review found the eye and pectoral fin missing.
-PECTORAL_FIN = [(-6, -16), (18, -28), (2, -34)]
-PECTORAL_SIDE_OFFSET = 13  # just inside the body surface at that height
-EYE_POSITION = (-58, 12.5, 10)
-EYE_RADIUS = 6
-PUPIL_RADIUS = 3.2
+PAINT_THICKNESS = 0.8
+# Paint outlines traced from the image with scripts/trace_regions.py (image pixels).
+EYE_WHITE = [(227.0, 220.0), (233.0, 220.0), (238.0, 222.0), (243.0, 227.0), (245.0, 232.0), (245.0, 238.0), (243.0, 243.0), (238.0, 248.0), (233.0, 250.0), (227.0, 250.0), (222.0, 248.0), (217.0, 243.0), (215.0, 238.0), (215.0, 232.0), (217.0, 227.0), (222.0, 222.0)]
+PUPIL = [(231.0, 228.0), (237.0, 229.0), (241.0, 234.0), (240.0, 240.0), (235.0, 244.0), (229.0, 243.0), (225.0, 238.0), (226.0, 232.0)]
+PECTORAL_FIN = [(362.0, 301.0), (416.0, 328.0), (418.0, 330.0), (415.0, 332.0), (410.0, 333.0), (407.0, 335.0), (402.0, 336.0), (383.0, 344.0), (380.0, 344.0), (361.0, 303.0)]
 # Colours sampled from the reference image (RGB / 255).
 BODY_COLOR = Color(240 / 255, 140 / 255, 60 / 255)
 FIN_COLOR = Color(226 / 255, 120 / 255, 52 / 255)
@@ -51,19 +54,15 @@ def build_model():
                 Polygon(*points)
             extrude(amount=FIN_THICKNESS / 2, both=True)
         parts.append(colored(fin.part, FIN_COLOR, label))
-    for side in (1, -1):
-        # Plane.XZ faces -Y, so offset(+d) moves the sketch to y = -d. One fin
-        # per side, extruded outward from just inside the body.
-        with BuildPart() as pectoral:
-            with BuildSketch(Plane.XZ.offset(-side * PECTORAL_SIDE_OFFSET)):
-                Polygon(*PECTORAL_FIN)
-            extrude(amount=side * -FIN_THICKNESS)
-        eye_x, eye_y, eye_z = EYE_POSITION
-        eye = Pos(eye_x, side * eye_y, eye_z) * Sphere(EYE_RADIUS)
-        # The pupil sits on the outer side of the eye ball.
-        pupil = Pos(eye_x, side * (eye_y + EYE_RADIUS - PUPIL_RADIUS * 0.5), eye_z) * Sphere(PUPIL_RADIUS)
-        name = "left" if side > 0 else "right"
-        parts += [colored(pectoral.part, PECTORAL_COLOR, f"{name} pectoral fin"),
-                  colored(eye, EYE_COLOR, f"{name} eye"), colored(pupil, PUPIL_COLOR, f"{name} pupil")]
+    # Painted details: traced outlines projected onto the visible (-Y) side,
+    # then mirrored to the hidden side (the body is symmetric about XZ).
+    paint = [
+        (projected_decal(body.part, PECTORAL_FIN, IMAGE_FRAME, PAINT_THICKNESS), PECTORAL_COLOR, "pectoral fin"),
+        (projected_decal(body.part, EYE_WHITE, IMAGE_FRAME, PAINT_THICKNESS, [PUPIL]), EYE_COLOR, "eye"),
+        (projected_decal(body.part, PUPIL, IMAGE_FRAME, PAINT_THICKNESS), PUPIL_COLOR, "pupil"),
+    ]
+    for decal, color, label in paint:
+        parts.append(colored(decal, color, f"{label} (visible side)"))
+        parts.append(colored(mirror(decal, about=Plane.XZ), color, f"{label} (hidden side)"))
     # A coloured assembly: each part keeps its colour in the STEP file.
     return Compound(children=parts, label="fish")

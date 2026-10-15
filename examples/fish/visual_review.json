@@ -8,16 +8,17 @@
   "human_acceptance": "not_verified_by_runner",
   "matches": [
     "body outline, forked tail, dorsal fin, pectoral fin, and eye are all present and placed as in the illustration",
-    "part colours match the illustration: orange body, darker tail and dorsal fin, darkest pectoral fin, white eye with a black pupil"
+    "traced eye, pupil and pectoral fin line up with the illustration in the registered overlay",
+    "registered colour IoU: body 0.94, tail/dorsal fin 0.91, pectoral fin 0.96, eye white 0.92, pupil 0.84; registered silhouette 0.95"
   ],
   "mismatches": [],
   "next_changes": [],
   "previous": null,
   "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
   "reviewer": "agent",
-  "run_report_sha256": "c49b2a0c8b076e727e9793f7f78c85c794334f67fa432b243005fac66736d24c",
+  "run_report_sha256": "07f324d5dac84a01d80cdb84f0db11bcb15951261e4104076f17c9a118386755",
   "schema_version": 1,
-  "source_view": "Illustration side view compared with CAD Front (from -Y) panel",
+  "source_view": "Illustration side view compared with the registered overlay (CAD drawn in the image's pixel frame) and the CAD Front (from -Y) panel",
   "verdict": "acceptable",
   "visual_status": "recorded_not_independently_verified"
 }

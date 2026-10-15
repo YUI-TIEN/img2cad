@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 from agent_cad_worker import parse_model_source
 from cli_args import join_negative_option_values, parse_view
 from inspect_step import color_rgba, inspect_step, leaf_parts
-from silhouette import compare as compare_silhouettes
+from silhouette import compare as compare_silhouettes, reference_foreground
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,14 +59,14 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def raster_preview(step_path: Path, output_path: Path, tolerance: float, reference_view: tuple[float, float, float] | None = None) -> dict[str, np.ndarray]:
-    """Render four shaded orthographic panels in part colours and return each panel's silhouette mask."""
+def load_mesh(step_path: Path, tolerance: float) -> tuple[np.ndarray, np.ndarray, list[int], list[tuple[int, int, int]]]:
+    """Tessellate every part of a STEP file: vertices, triangles, triangle->part, part colours."""
     shape = import_step(str(step_path))
     all_coords: list[tuple[float, float, float]] = []
     all_faces: list[tuple[int, int, int]] = []
     face_parts: list[int] = []
     part_colors: list[tuple[int, int, int]] = []
-    for part_index, part in enumerate(leaf_parts(shape)):
+    for part in leaf_parts(shape):
         vertices, triangles = part.tessellate(tolerance, 0.12)
         if not vertices or not triangles:
             continue
@@ -80,7 +80,70 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
     faces = np.array(all_faces, dtype=np.int32)
     if not len(coords) or not len(faces):
         raise RuntimeError("STEP tessellation produced no preview mesh")
+    return coords, faces, face_parts, part_colors
 
+
+def rasterize(tx: np.ndarray, ty: np.ndarray, depth: np.ndarray, coords: np.ndarray, faces: np.ndarray, face_parts: list[int],
+              part_colors: list[tuple[int, int, int]], light_vec: np.ndarray, width: int, height: int,
+              background: tuple[int, int, int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Z-buffered flat-shaded triangles; tx/ty are pixel coordinates, larger depth is nearer the camera."""
+    zbuffer = np.full((height, width), -np.inf, dtype=np.float64)
+    pixels = np.full((height, width, 3), background, dtype=np.uint8)
+    part_ids = np.full((height, width), -1, dtype=np.int32)
+    for face_index, face in enumerate(faces):
+        ids = face.tolist()
+        fx, fy = tx[ids], ty[ids]
+        x0, x1 = max(0, int(fx.min())), min(width - 1, int(fx.max()))
+        y0, y1 = max(0, int(fy.min())), min(height - 1, int(fy.max()))
+        if x0 > x1 or y0 > y1:
+            continue
+        ax, ay = fx[0], fy[0]
+        bx, by = fx[1], fy[1]
+        cx, cy = fx[2], fy[2]
+        denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(denom) < 1e-8:
+            continue
+        grid_x, grid_y = np.meshgrid(np.arange(x0, x1 + 1), np.arange(y0, y1 + 1))
+        w0 = ((by - cy) * (grid_x - cx) + (cx - bx) * (grid_y - cy)) / denom
+        w1 = ((cy - ay) * (grid_x - cx) + (ax - cx) * (grid_y - cy)) / denom
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -0.001) & (w1 >= -0.001) & (w2 >= -0.001)
+        depths = w0 * depth[ids[0]] + w1 * depth[ids[1]] + w2 * depth[ids[2]]
+        region_z = zbuffer[y0:y1 + 1, x0:x1 + 1]
+        visible = inside & (depths > region_z)
+        if not np.any(visible):
+            continue
+        world = coords[ids]
+        normal = np.cross(world[1] - world[0], world[2] - world[0])
+        normal_len = float(np.linalg.norm(normal)) or 1.0
+        brightness = 0.64 + 0.36 * abs(float(np.dot(normal / normal_len, light_vec)))
+        part_id = face_parts[face_index]
+        region_z[visible] = depths[visible]
+        pixels[y0:y1 + 1, x0:x1 + 1][visible] = np.asarray([int(channel * brightness) for channel in part_colors[part_id]], dtype=np.uint8)
+        part_ids[y0:y1 + 1, x0:x1 + 1][visible] = part_id
+    return pixels, part_ids, zbuffer
+
+
+def part_boundaries(part_ids: np.ndarray) -> np.ndarray:
+    """Pixels on the silhouette or between two different parts."""
+    height, width = part_ids.shape
+    padded = np.pad(part_ids, 1, constant_values=-1)
+    boundary = np.zeros(part_ids.shape, dtype=bool)
+    for dy, dx in ((0, 1), (2, 1), (1, 0), (1, 2)):
+        boundary |= padded[dy:dy + height, dx:dx + width] != part_ids
+    return boundary & (part_ids >= 0)
+
+
+def camera_light(view_direction: np.ndarray, screen_up: np.ndarray, screen_right: np.ndarray) -> np.ndarray:
+    # Key light from the camera side, slightly above and to the left, so every
+    # view shows the faces it looks at.
+    light = 0.75 * view_direction + 0.5 * screen_up - 0.3 * screen_right
+    return light / np.linalg.norm(light)
+
+
+def raster_preview(step_path: Path, output_path: Path, tolerance: float, reference_view: tuple[float, float, float] | None = None) -> dict[str, np.ndarray]:
+    """Render four shaded orthographic panels in part colours and return each panel's silhouette mask."""
+    coords, faces, face_parts, part_colors = load_mesh(step_path, tolerance)
     inv_sqrt2 = 1 / math.sqrt(2)
     inv_sqrt3 = 1 / math.sqrt(3)
     inv_sqrt6 = 1 / math.sqrt(6)
@@ -132,57 +195,11 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
         offset_y = top + 40 + (panel_h - 45 - span_y * scale) / 2 + max_y * scale
         screen_x = np.rint(offset_x + projected_x * scale).astype(np.int32)
         screen_y = np.rint(offset_y - projected_y * scale).astype(np.int32)
-        zbuffer = np.full((panel_h, panel_w), -np.inf, dtype=np.float64)
-        pixels = np.full((panel_h, panel_w, 3), PANEL_BACKGROUND, dtype=np.uint8)
-        part_ids = np.full((panel_h, panel_w), -1, dtype=np.int32)
-        # Key light from the camera side, slightly above and to the left, so
-        # every panel shows the faces it looks at.
-        light_vec = 0.75 * view_direction + 0.5 * screen_up - 0.3 * screen_right
-        light_vec /= np.linalg.norm(light_vec)
-        for face_index, face in enumerate(faces):
-            ids = face.tolist()
-            tri_x = screen_x[ids]
-            tri_y = screen_y[ids]
-            # Screen-space coordinates are converted to panel-local values.
-            tx = tri_x - left
-            ty = tri_y - top
-            x0, x1 = max(0, int(tx.min())), min(panel_w - 1, int(tx.max()))
-            y0, y1 = max(0, int(ty.min())), min(panel_h - 1, int(ty.max()))
-            if x0 > x1 or y0 > y1:
-                continue
-            ax, ay = tx[0], ty[0]
-            bx, by = tx[1], ty[1]
-            cx, cy = tx[2], ty[2]
-            denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
-            if abs(denom) < 1e-8:
-                continue
-            grid_x, grid_y = np.meshgrid(np.arange(x0, x1 + 1), np.arange(y0, y1 + 1))
-            w0 = ((by - cy) * (grid_x - cx) + (cx - bx) * (grid_y - cy)) / denom
-            w1 = ((cy - ay) * (grid_x - cx) + (ax - cx) * (grid_y - cy)) / denom
-            w2 = 1.0 - w0 - w1
-            inside = (w0 >= -0.001) & (w1 >= -0.001) & (w2 >= -0.001)
-            depths = w0 * projected_depth[ids[0]] + w1 * projected_depth[ids[1]] + w2 * projected_depth[ids[2]]
-            region_z = zbuffer[y0:y1 + 1, x0:x1 + 1]
-            visible = inside & (depths > region_z)
-            if not np.any(visible):
-                continue
-            world = coords[ids]
-            normal = np.cross(world[1] - world[0], world[2] - world[0])
-            normal_len = float(np.linalg.norm(normal)) or 1.0
-            diffuse = abs(float(np.dot(normal / normal_len, light_vec)))
-            brightness = 0.64 + 0.36 * diffuse
-            part_id = face_parts[face_index]
-            color = np.asarray([int(channel * brightness) for channel in part_colors[part_id]], dtype=np.uint8)
-            region_z[visible] = depths[visible]
-            pixels[y0:y1 + 1, x0:x1 + 1][visible] = color
-            part_ids[y0:y1 + 1, x0:x1 + 1][visible] = part_id
+        pixels, part_ids, zbuffer = rasterize(screen_x - left, screen_y - top, projected_depth, coords, faces, face_parts, part_colors,
+                                              camera_light(view_direction, screen_up, screen_right), panel_w, panel_h, PANEL_BACKGROUND)
         # Dark outline on the silhouette and between parts, so white or
         # same-tone parts stay readable against the panel and each other.
-        padded = np.pad(part_ids, 1, constant_values=-1)
-        boundary = np.zeros(part_ids.shape, dtype=bool)
-        for dy, dx in ((0, 1), (2, 1), (1, 0), (1, 2)):
-            boundary |= padded[dy:dy + panel_h, dx:dx + panel_w] != part_ids
-        pixels[boundary & (part_ids >= 0)] = OUTLINE_COLOR
+        pixels[part_boundaries(part_ids)] = OUTLINE_COLOR
         masks[title] = np.isfinite(zbuffer)
         panel = Image.fromarray(pixels)
         image.paste(panel, (left, top))
@@ -192,6 +209,98 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
 
     image.save(output_path, format="PNG", optimize=True)
     return masks
+
+
+def shading_tolerant_features(rgb: np.ndarray) -> np.ndarray:
+    """Luminance (down-weighted) plus two chroma axes, so shading changes the
+    match less than a change of hue does (shaded white stays white, not pink)."""
+    rgb = rgb.astype(np.float64)
+    luminance = rgb.mean(axis=-1)
+    return np.stack([0.5 * luminance, rgb[..., 0] - rgb[..., 1], rgb[..., 1] - rgb[..., 2]], axis=-1)
+
+
+def nearest_palette(pixels: np.ndarray, palette: list[tuple[int, int, int]]) -> np.ndarray:
+    centres = shading_tolerant_features(np.array(palette))
+    features = shading_tolerant_features(pixels)
+    return np.argmin(np.linalg.norm(features[:, :, None, :] - centres[None, None, :, :], axis=3), axis=2)
+
+
+def registered_overlay(step_path: Path, reference: Path, frame: dict[str, Any], tolerance: float, output_path: Path,
+                       mask_path: Path | None = None, auto_subject: bool = False) -> dict[str, Any]:
+    """Render the front view in the reference image's own pixel frame and score it.
+
+    `frame` (written by the model as IMAGE_FRAME) maps image pixels to model
+    mm, so the CAD lands exactly where the model claims it is. The overlay
+    shows the CAD outline and part boundaries on the photo next to a 50/50
+    blend. Each part colour is scored by IoU against the photo pixels whose
+    nearest model colour it is, inside the subject (the mask when given,
+    otherwise the automatic segmentation when it is reliable, otherwise the
+    CAD silhouette); `silhouette_iou` is unnormalised, so scale and position
+    errors count.
+    """
+    photo = Image.open(reference).convert("RGB")
+    width, height = photo.size
+    scale = float(frame["mm_per_px"])
+    origin_x, origin_y = (float(value) for value in frame["origin_px"])
+    coords, faces, face_parts, part_colors = load_mesh(step_path, tolerance)
+    tx = origin_x + coords[:, 0] / scale
+    ty = origin_y - coords[:, 2] / scale
+    depth = -coords[:, 1]  # camera on -Y: smaller y is nearer
+    light = camera_light(np.array((0.0, -1.0, 0.0)), np.array((0.0, 0.0, 1.0)), np.array((1.0, 0.0, 0.0)))
+    render, part_ids, _ = rasterize(tx, ty, depth, coords, faces, face_parts, part_colors, light, width, height, PANEL_BACKGROUND)
+    cad_mask = part_ids >= 0
+    photo_pixels = np.asarray(photo)
+    subject = cad_mask
+    result: dict[str, Any] = {"frame": frame, "advisory": True}
+    subject_source = "CAD silhouette"
+    if mask_path is not None:
+        subject = np.asarray(Image.open(mask_path).convert("L").resize((width, height))) > 127
+        subject_source = "reference mask"
+    elif auto_subject:
+        automatic = reference_foreground(reference)
+        subject = np.asarray(Image.fromarray(automatic.astype(np.uint8) * 255).resize((width, height), Image.Resampling.NEAREST)) > 127
+        # The segmentation runs on a downscaled copy, so its upscaled edge is
+        # blocky; drop pixels that match the background (median border colour).
+        border = np.concatenate([photo_pixels[0], photo_pixels[-1], photo_pixels[:, 0], photo_pixels[:, -1]])
+        background = shading_tolerant_features(np.median(border, axis=0))
+        subject &= np.linalg.norm(shading_tolerant_features(photo_pixels) - background, axis=-1) > 12
+        subject_source = "automatic segmentation"
+    result["subject"] = subject_source
+    if subject_source != "CAD silhouette":
+        union = np.logical_or(subject, cad_mask).sum()
+        result["silhouette_iou"] = round(float(np.logical_and(subject, cad_mask).sum() / union), 4) if union else 0.0
+    palette = sorted(set(part_colors))
+    if len(palette) > 1:
+        nearest = nearest_palette(photo_pixels, palette)
+        part_palette = np.array([palette.index(color) for color in part_colors])
+        cad_class = np.where(cad_mask, part_palette[np.maximum(part_ids, 0)], -1)
+        regions = {}
+        for index, color in enumerate(palette):
+            photo_region = subject & (nearest == index)
+            cad_region = cad_class == index
+            union = np.logical_or(photo_region, cad_region).sum()
+            regions["#%02x%02x%02x" % color] = {
+                "iou": round(float(np.logical_and(photo_region, cad_region).sum() / union), 4) if union else None,
+                "photo_px": int(photo_region.sum()), "cad_px": int(cad_region.sum()),
+            }
+        result["color_regions"] = regions
+    edges = part_boundaries(part_ids)
+    outlined = photo_pixels.copy()
+    padded = np.pad(cad_mask, 1)
+    interior = padded[2:, 1:-1] & padded[:-2, 1:-1] & padded[1:-1, 2:] & padded[1:-1, :-2]
+    silhouette_edge = cad_mask & ~interior
+    outlined[edges] = (255, 220, 0)
+    outlined[silhouette_edge] = (230, 30, 30)
+    blend = np.where(cad_mask[:, :, None], (photo_pixels.astype(np.uint16) + render) // 2, photo_pixels).astype(np.uint8)
+    canvas = Image.new("RGB", (width * 2 + 30, height + 60), "#f3f6fa")
+    draw = ImageDraw.Draw(canvas)
+    font = load_font(max(14, width // 45))
+    draw.text((10, 15), "Photo + CAD outline (red) and part edges (yellow)", fill="#18324b", font=font)
+    draw.text((width + 20, 15), "Photo / CAD 50:50 blend", fill="#18324b", font=font)
+    canvas.paste(Image.fromarray(outlined), (10, 50))
+    canvas.paste(Image.fromarray(blend), (width + 20, 50))
+    canvas.save(output_path, format="PNG", optimize=True)
+    return result
 
 
 def make_comparison(reference: Path, preview: Path, output_path: Path) -> None:
@@ -301,6 +410,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             local_mask = run_dir / "reference_mask.png"
             shutil.copyfile(mask_source, local_mask)
         silhouette = compare_silhouettes(local_reference, view_masks, silhouette_path, local_mask)
+        frame_path = run_dir / "frame.json"
+        registered = None
+        if frame_path.is_file():
+            registered = registered_overlay(step_path, local_reference, json.loads(frame_path.read_text(encoding="utf-8")),
+                                            args.mesh_tolerance, run_dir / "registered.png", local_mask,
+                                            auto_subject=bool(silhouette and silhouette.get("reliable")))
     else:
         local_reference = None
         comparison_path = None
@@ -323,6 +438,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         report["reference"] = {"path": local_reference.name, "sha256": sha256(local_reference)}
         report["comparison"] = {"path": comparison_path.name, "sha256": sha256(comparison_path)}
         report["silhouette"] = silhouette
+        if registered is not None:
+            report["registered"] = registered
+            report["registered_overlay"] = {"path": "registered.png", "sha256": sha256(run_dir / "registered.png")}
         if local_mask is not None:
             report["reference_mask"] = {"path": local_mask.name, "sha256": sha256(local_mask)}
         if silhouette_path.is_file():
@@ -338,7 +456,7 @@ def main() -> int:
     parser.add_argument("run_dir", type=Path, help="new output directory; must not already exist")
     parser.add_argument("--reference", type=Path, help="optional local reference image for a side-by-side comparison")
     parser.add_argument("--cad-python", default=sys.executable, help="Python interpreter with build123d and Pillow installed")
-    parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--mesh-tolerance", type=float, default=0.45)
     parser.add_argument("--reference-view", type=parse_view, help="direction from the model toward the camera as x,y,z (Z up); replaces the isometric panel")
     parser.add_argument("--reference-mask", type=Path, help="optional PNG mask of the object in the reference image (white = object), same size as the reference")

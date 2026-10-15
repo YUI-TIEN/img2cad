@@ -7,7 +7,7 @@ Each directory is a complete, accepted `scripts/agent_workflow.py` run copied he
 | [`mounting-plate`](mounting-plate/) | dimension-constrained | `Box` + `fillet` + `GridLocations`/`Hole` | prismatic parts with hole patterns, reading a dimensioned drawing, hole/volume constraints |
 | [`flanged-bushing`](flanged-bushing/) | dimension-constrained | half-profile + `revolve` | turned/round parts, bores, boss/hole constraints |
 | [`vase`](vase/) | visual approximation | silhouette-measured `Spline` + `revolve` + `offset` shell | round organic objects from one front view, hollow parts |
-| [`fish`](fish/) | visual approximation, coloured | `loft` through `Ellipse` sections + thin extruded fins, coloured `Compound` assembly | free-form organic bodies; per-part colours sampled from the image; a real `revise` → `r002` round in `history/` |
+| [`fish`](fish/) | visual approximation, coloured | `loft` through `Ellipse` sections + thin fins; paint traced and projected with `projected_decal`; `IMAGE_FRAME` registration | organic bodies; precise painted details; per-colour scoring in `registered.png`; a real `revise` → `r002` round in `history/` |
 | [`standing-horse`](standing-horse/) | visual approximation | point-to-point `Cone` limbs + rotated ball joints, ellipsoids, lofted barrel | animals with legs or any jointed/limbed shape; fusing many parts into one solid; using `preview` |
 | [`pagoda`](pagoda/) | visual approximation | ruled `loft` through squares for battered base and hipped roofs | buildings, roofs, stepped/tiered structures |
 | [`../benchmark/cases/visual-pose-dog`](../benchmark/cases/visual-pose-dog/) | visual approximation | scaled `Sphere`/`Cylinder` primitives in a `Compound` | quickest blocky approximation (frozen benchmark fixture; multi-solid, so it needs `allow_multiple_solids`) |
@@ -17,7 +17,7 @@ Files in each example:
 - `reference.png` — input image.
 - `observations.json`, `plan.json` — what was seen, inferred, and planned (the workflow's recorded inputs).
 - `model.py` — final reviewed build123d source.
-- `comparison.png` — reference beside the four CAD views (Front from −Y, Right from +X, Top, Isometric); `silhouette.png` — advisory overlap overlay (gray both, red reference only, blue CAD only).
+- `comparison.png` — reference beside the four CAD views (Front from −Y, Right from +X, Top, Isometric); `silhouette.png` — advisory overlap overlay (gray both, red reference only, blue CAD only); `registered.png` (when the model defines `IMAGE_FRAME`) — the CAD drawn on the image in its own pixel frame.
 - `visual_review.json` — hash-bound agent review. `history/rNNN/` holds earlier revisions when there were any.
 - `example.json` — techniques, measured geometry, dimension checks, silhouette score, revision history, and file hashes.
 - `README.md` — how the image was read and the pitfalls hit while building it.

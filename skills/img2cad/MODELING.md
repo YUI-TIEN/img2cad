@@ -25,10 +25,50 @@ return Compound(children=[body, eye, ...], label="statue")
 ```
 
 - **One part per colour region.** Fuse everything that shares a colour into one part. `fuse` keeps only one colour, so fusing a black eye into a white body makes it all white.
-- **Painted details** (eyes, markings, blush, stripes, logos): build a thin solid on the surface, oriented along the surface normal, and give it the paint colour. An ellipsoid that sits partly inside the surface works: `Plane(origin=point, x_dir=tangent, z_dir=normal) * Sphere(1).scale((rx, ry, thickness))`. Lift details that lie on top of other details (a highlight on an eye, stripes on a blush) a little further so they show. For an exact-thickness layer on a curved surface, take a shell and clip it: `shell = offset(body, t).cut(body)` and `decal = prism.cut(prism.cut(shell))`.
+- **Painted details** (eyes, markings, blush, stripes, logos): trace them from the image and project them onto the surface as thin layers. See "Precision tools" below. Do not draw paint as hand-placed ellipsoids. On the statue, that approach overlapped the photo's black regions at only 0.45; traced decals reached 0.84.
 - **Every part must be one solid that touches the rest.** Two fins that only meet through the body must be two parts, not one; the gate reports a part with 2 solids.
 - The preview draws each part in its colour, with dark outlines on the silhouette and between parts. Compare the colours with the image in `comparison.png`.
 - A colour is per part, not a texture: photos, gradients, and printed text are out of scope.
+
+## Precision tools
+
+Use these whenever the image has details that matter (paint, markings, feature outlines). They replace eyeballing with measurement. They live in `scripts/`, and the worker puts that directory on `sys.path`, so `model.py` can `from img2cad_lib import ...`.
+
+1. **Register the image.** In `model.py`, define the pixel↔millimetre mapping of the front view:
+
+   ```python
+   from img2cad_lib import ImageFrame
+   IMAGE_FRAME = ImageFrame(mm_per_px=4, origin_px=(398, 725))  # pixel (398, 725) = model x 0, z 0; camera on -Y
+   ```
+
+   Use `IMAGE_FRAME.to_model(px, py)` for every measured position. When `IMAGE_FRAME` exists, `run`/`preview` draw the CAD **in the photo's own pixel frame**: `registered.png` shows the CAD outline (red) and part edges (yellow) on the photo, next to a 50:50 blend. They also report `registered.silhouette_iou` (unnormalised, so scale and position errors count; needs `--reference-mask`) and `registered.color_regions`: the IoU of each part colour against the photo pixels nearest to that colour, measured with a shading-tolerant colour distance. Read these numbers after every preview; they say exactly which colour region is off.
+2. **Trace colour regions** instead of guessing feature shapes:
+
+   ```sh
+   .venv-cad/bin/python scripts/trace_regions.py reference.png --mask mask.png \
+     --color white=240,240,236 --color shade=200,200,196 --color black=30,28,30 --color pink=240,170,165 \
+     --trace black --trace pink --out regions.json --overlay regions.png
+   ```
+
+   - Include every colour present on the subject in the palette, including a darker "shade" of the main colour, so shadows don't get assigned to paint.
+   - Each traced region has an `outline`, `holes` (for example the highlight inside an eye), a centroid, and a bbox, all in image pixels.
+   - Regions touching the mask edge are dropped (`--edge-band`).
+   - Check `regions.png`, then copy the outlines you need into `model.py` as literals, so the model stays self-contained and hash-pinned.
+3. **Project the outlines onto the surface:**
+
+   ```python
+   from img2cad_lib import projected_decal
+   eye = projected_decal(head, outline_px, IMAGE_FRAME, thickness=3, holes_px=holes)  # exact layer following the surface
+   highlight = projected_decal(head, holes[0], IMAGE_FRAME, thickness=3)             # fills the hole in another colour
+   ```
+
+   - The layer follows the surface curvature, touches it, and keeps the traced shape exactly (arcs, ω mouths, slanted stripes).
+   - Pass the surface the paint sits on (the head, not the whole fused body); it is offset once and cached.
+   - Each layer is one part, so give it its colour and label.
+4. Other helpers:
+   - `revolved_profile(points)`: smooth revolve, seam turned to the back.
+   - `segment(start, end, r0, r1)`: a tapered limb between two points.
+   - `ball_joint(point, r)`: a joint sphere, rotated so it fuses.
 
 ## Plane cheat sheet
 
@@ -61,6 +101,7 @@ Verified behaviour of build123d 0.13 (pinned in `requirements-cad.lock`):
 - **Revolve seams**: `revolve` leaves a seam line in the sketch plane (the +X side for `Plane.XZ`). Before fusing parts onto a revolved body, rotate the body so the seam faces away from them, e.g. `Rot(0, 0, 90) * revolved` puts it at the back.
 - **Smooth rounded bodies from a measured outline** (heads, bottles, domes): run one `Spline` through the (radius, height) points, starting and ending on the axis with `tangents=((1, 0), (-1, 0))`, and `revolve` it. Avoid squashing the result with a non-uniform `scale` if you will fuse more parts onto it.
 - **Trimming**: `shape.intersect(other)` returns a `ShapeList`; to keep only part of a shape, `cut` away the rest (e.g. a big `Box` below the floor).
+- **`offset` fails on a placed shape**: in the pinned build123d, `offset()` raises "offset Error" for any shape moved with `Pos`/`moved`, even a plain sphere. Offset it at the identity location and place the result back: `offset(s.located(Location()), amount=t).located(s.location)`. `projected_decal` already does this.
 
 ## Views and camera direction
 
