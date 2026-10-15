@@ -29,7 +29,7 @@ All reviews are agent reviews (`human_acceptance: not_verified`).
 After a run whose visual review is `acceptable`:
 
 ```sh
-python3 -B scripts/agent_workflow.py promote /path/to/work --name short-slug \
+img2cad workflow promote /path/to/work --name short-slug \
   --technique "main build123d technique" --technique "anything else worth copying"
 ```
 

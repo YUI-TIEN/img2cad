@@ -4,6 +4,49 @@ An image-to-parametric-CAD workflow: turn a product image, sketch, or engineerin
 
 > **Status:** early workflow prototype. The repository has an agent skill, a local runner for reviewed agent-authored build123d source, generic STEP inspection and preview generation, plus a constrained spec-to-CAD benchmark runner. The agent still performs image interpretation, model authoring, preview review, and refinement; the local runner handles CAD execution and artifact checks.
 
+**Website:** <https://yui-tien.github.io/img2cad/> — how the pipeline works, with interactive 3D examples.
+
+## Quick start
+
+img2cad is a set of agent skills plus one command-line tool, `img2cad`. Install it in your agent, then give the agent an image and ask for CAD.
+
+| Host | Install |
+|---|---|
+| Claude Code | `/plugin marketplace add YUI-TIEN/img2cad` then `/plugin install img2cad@img2cad` |
+| Codex, Cursor | add this repository as a plugin (`.codex-plugin/`, `.cursor-plugin/`) |
+| Gemini CLI | `gemini extensions install https://github.com/YUI-TIEN/img2cad` |
+| Any agent with skills | `npx skills add YUI-TIEN/img2cad` |
+| Any MCP host | server command `uvx --python 3.13 --from git+https://github.com/YUI-TIEN/img2cad img2cad mcp` |
+
+The command line works without a clone (needs [uv](https://docs.astral.sh/uv/)):
+
+```sh
+uvx --python 3.13 --from git+https://github.com/YUI-TIEN/img2cad img2cad doctor     # check the CAD stack
+uv tool install --python 3.13 git+https://github.com/YUI-TIEN/img2cad               # or put `img2cad` on PATH
+```
+
+From a clone, use `.venv-cad/bin/python scripts/img2cad_cli.py` in place of `img2cad`:
+
+```sh
+python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock
+.venv-cad/bin/python scripts/img2cad_cli.py doctor
+```
+
+| Command | What it does |
+|---|---|
+| `img2cad workflow ...` | staged, resumable image → CAD workflow (init, observations, plan, preview, source-review, run, review, new-revision, promote, status) |
+| `img2cad build model.py out/` | build one `model.py`: STEP + GLB/STL/3MF, checks, previews, comparison, registered overlay |
+| `img2cad trace image.png ...` | trace colour regions of a reference image into pixel outlines |
+| `img2cad inspect model.step` | measure a STEP: validity, solids, parts and colours, bounds, volume, holes/bosses |
+| `img2cad view model.step` | local 3D viewer: orbit, part list, measure, section planes, screenshots |
+| `img2cad export model.step out/` | GLB (coloured), 3MF (coloured parts), STL |
+| `img2cad drawing model.step out/` | three-view SVG/DXF drawing with overall dimensions and a hole table |
+| `img2cad printcheck model.step` | watertight, overhangs, bed contact, thin walls, build volume |
+| `img2cad mcp` | the same tools over MCP (stdio) |
+| `img2cad doctor` / `version` | environment check / version |
+
+**Outputs of every run:** `model.py` (the editable source of truth), `model.step` (B-rep with part names and colours), `model.glb`, `model.3mf`, `model.stl`, `preview.png`, `comparison.png`, `silhouette.png`, `registered.png` (when the model registers the image), `inspection.json` and `run_report.json`.
+
 ## Problem
 
 Image-to-3D tools can create visually convincing 3D models, while CAD tools can create editable solids from code. img2cad's intended workflow is for an agent to inspect the image, plan the geometry, author a parametric CAD model, and compare a render with the reference. The difficult gap is making that model both visually faithful and a valid, editable CAD artifact—not choosing a particular vision API.
@@ -108,28 +151,29 @@ The repository-owned agent procedure is [`skills/img2cad/SKILL.md`](skills/img2c
 
 ### Resumable general workflow CLI
 
-Use `scripts/agent_workflow.py` for the ordinary image-led path. It stores a local `workflow.json`, pins the reference image, records stage input/output hashes and a `next_step` for each stage, and reports the next action on `status`. Each workflow directory is new; revisions are append-only, with the earlier CAD run retained. This state machine coordinates the agent's judgments—it does not infer observations, inspect visual quality, or turn an agent review into human acceptance.
+Use `img2cad workflow` (`scripts/agent_workflow.py`) for the ordinary image-led path. It stores a local `workflow.json`, pins the reference image, records stage input/output hashes and a `next_step` for each stage, and reports the next action on `status`. Each workflow directory is new; revisions are append-only, with the earlier CAD run retained. This state machine coordinates the agent's judgments—it does not infer observations, inspect visual quality, or turn an agent review into human acceptance.
 
 ```sh
-python3 -B scripts/agent_workflow.py init /path/to/work --reference /path/to/image.png --target-type visual_approximation
-python3 -B scripts/agent_workflow.py status /path/to/work
-python3 -B scripts/agent_workflow.py observations /path/to/work --file /path/to/observations.json
-python3 -B scripts/agent_workflow.py plan /path/to/work --file /path/to/plan.json
-python3 -B scripts/agent_workflow.py preview /path/to/work --model /path/to/draft.py   # iterate freely; no stage changes
-python3 -B scripts/agent_workflow.py source-review /path/to/work --model /path/to/model.py \
+img2cad workflow init /path/to/work --reference /path/to/image.png --target-type visual_approximation
+img2cad workflow status /path/to/work
+img2cad workflow observations /path/to/work --file /path/to/observations.json
+img2cad workflow plan /path/to/work --file /path/to/plan.json
+img2cad workflow preview /path/to/work --model /path/to/draft.py   # iterate freely; no stage changes
+img2cad workflow source-review /path/to/work --model /path/to/model.py \
   --inspection-note "Checked the source against the plan; only intended build123d geometry is created."
-python3 -B scripts/agent_workflow.py run /path/to/work --cad-python .venv-cad/bin/python
-python3 -B scripts/agent_workflow.py review /path/to/work --notes /path/to/review.json
-python3 -B scripts/agent_workflow.py promote /path/to/work --name short-slug --technique "what it demonstrates"
+img2cad workflow run /path/to/work
+img2cad workflow review /path/to/work --notes /path/to/review.json
+img2cad workflow promote /path/to/work --name short-slug --technique "what it demonstrates"
 ```
 
-Set up the CAD environment once with `python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock`.
+`run` uses `--cad-python`, else `$IMG2CAD_CAD_PYTHON`, else the clone's `.venv-cad/bin/python`, else the interpreter running `img2cad`.
 
 ### Learning material for agents
 
 - [`skills/img2cad/MODELING.md`](skills/img2cad/MODELING.md): the allowed build123d API, plane orientation, technique-by-object-type table, how to read sizes from images, and the declarable checks.
 - [`examples/`](examples/README.md): accepted end-to-end runs (dimensioned plate, revolved bushing, revolved and shelled vase, lofted fish with a revise round, jointed standing horse, tiered pagoda), each with reference, observations, plan, model, comparison, silhouette overlay, review, and a short write-up.
 - [`skills/img2cad/LESSONS.md`](skills/img2cad/LESSONS.md): verified pitfalls from real runs.
+- [`skills/cad-output/SKILL.md`](skills/cad-output/SKILL.md): viewing, mesh export, engineering drawings, and printability checks for a finished model.
 - Precision tools:
   - `scripts/trace_regions.py` traces colour regions of the photo into pixel outlines.
   - `scripts/img2cad_lib.py`, importable from `model.py`, provides `ImageFrame` registration, `projected_decal` for exact painted details on curved surfaces, and helpers for revolves, limbs, and joints.

@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 from agent_cad_worker import parse_model_source
 from cli_args import join_negative_option_values, parse_view
 from inspect_step import color_rgba, inspect_step, leaf_parts
+from mesh_export import export_meshes, parse_formats
 from silhouette import compare as compare_silhouettes, reference_foreground
 
 
@@ -358,7 +359,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     run_dir.mkdir(parents=True, exist_ok=False)
     cad_python = Path(args.cad_python).expanduser()
     if not cad_python.is_absolute():
-        cad_python = ROOT / cad_python
+        cad_python = Path.cwd() / cad_python if (Path.cwd() / cad_python).exists() else ROOT / cad_python
     # Preserve venv symlinks: resolving to the base interpreter would bypass
     # pyvenv.cfg and make installed CAD packages appear missing under -I.
     cad_python = Path(os.path.abspath(cad_python))
@@ -387,6 +388,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise RuntimeError("STEP inspection failed: B-rep invalid or no positive-volume solid")
     if not args.allow_multiple_solids:
         check_part_structure(inspection)
+    meshes = export_meshes(step_path, run_dir, args.mesh_formats) if args.mesh_formats else {}
     preview_path = run_dir / "preview.png"
     view_masks = raster_preview(step_path, preview_path, args.mesh_tolerance, args.reference_view)
 
@@ -431,6 +433,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "step": {"path": step_path.name, "sha256": sha256(step_path)},
         "preview": {"path": preview_path.name, "sha256": sha256(preview_path)},
         "inspection": inspection,
+        **{name: {"path": path.name, "sha256": sha256(path)} for name, path in meshes.items()},
         "source_policy": ("allowlisted build123d/Python subset (strict)" if args.strict else "unrestricted Python (open)") + "; isolated subprocess with timeout; not an OS sandbox",
         "execution": {"interpreter": str(cad_python), "timeout_seconds": args.timeout},
     }
@@ -461,6 +464,8 @@ def main() -> int:
     parser.add_argument("--reference-view", type=parse_view, help="direction from the model toward the camera as x,y,z (Z up); replaces the isometric panel")
     parser.add_argument("--reference-mask", type=Path, help="optional PNG mask of the object in the reference image (white = object), same size as the reference")
     parser.add_argument("--allow-multiple-solids", action="store_true", help="accept parts made of several solids and floating parts")
+    parser.add_argument("--mesh-formats", type=parse_formats, default=("glb", "stl", "3mf"),
+                        help="meshes to export next to model.step: any of glb,stl,3mf, or none (default: all)")
     parser.add_argument("--strict", action="store_true", help="apply the allowlist source policy (for untrusted model source)")
     args = parser.parse_args(join_negative_option_values(sys.argv[1:], ("--reference-view",)))
     try:

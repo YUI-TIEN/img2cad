@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: Unit tests (no CAD kernel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: python -m pip install pytest pillow numpy
+      - name: Run unit tests
+        run: python -m pytest -q
+
+  cad:
+    name: CAD tests (build123d / Open CASCADE)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-cad.lock
+      - name: Create the CAD environment
+        run: |
+          python -m venv .venv-cad
+          .venv-cad/bin/pip install -r requirements-cad.lock pytest
+      - name: Run all tests, including example rebuilds
+        env:
+          IMG2CAD_CAD_PYTHON: ${{ github.workspace }}/.venv-cad/bin/python
+        run: .venv-cad/bin/python -m pytest -q

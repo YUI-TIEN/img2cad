@@ -20,9 +20,12 @@ from cli_args import join_negative_option_values, parse_view
 from record_visual_review import record as record_visual_review
 
 
-ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS = Path(__file__).resolve().parent
+# Repository root when running from a clone; in an installed package this is
+# the package directory, which has no .venv-cad or examples/ of its own.
+ROOT = SCRIPTS.parent
 STATE_NAME = "workflow.json"
-RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay", "reference_mask", "registered_overlay")
+RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay", "reference_mask", "registered_overlay", "glb", "stl", "3mf")
 STAGES = ("observations", "plan", "source_review", "geometry", "dimensions", "visual_review")
 
 
@@ -337,7 +340,7 @@ def run_geometry(args: argparse.Namespace) -> None:
         raise ValueError("reference image changed after workflow initialization")
     cad_dir = revision_dir / "cad"
     command = runner_command(root, state, plan, model, cad_dir, args, stages["source_review"].get("source_policy") == "strict")
-    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
+    result = subprocess.run(command, cwd=SCRIPTS.parent, text=True, capture_output=True, check=False)
     if result.returncode == 2:
         # argparse usage error: the model never ran, so do not spend the revision.
         raise ValueError(f"CAD runner rejected its arguments (revision not used): {result.stderr.strip()[-1000:]}")
@@ -368,14 +371,29 @@ def run_geometry(args: argparse.Namespace) -> None:
                       "dimension_checks": checks if dimension_applicable else "not_applicable", "next": next_action(revision)}, indent=2))
 
 
+def resolve_cad_python(requested: str | None) -> Path:
+    """The interpreter that has build123d: --cad-python, $IMG2CAD_CAD_PYTHON,
+    a clone's .venv-cad, or (installed package) this interpreter itself."""
+    import os
+
+    candidates = [requested, os.environ.get("IMG2CAD_CAD_PYTHON")]
+    for candidate in candidates:
+        if candidate:
+            path = Path(candidate).expanduser()
+            if not path.is_absolute():
+                path = Path.cwd() / path if (Path.cwd() / path).exists() else ROOT / path
+            if not path.is_file():
+                raise ValueError(f"CAD interpreter not found: {path} (run `img2cad doctor`, or create .venv-cad: "
+                                 "python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock)")
+            return Path(os.path.abspath(path))
+    clone_venv = ROOT / ".venv-cad/bin/python"
+    return Path(os.path.abspath(clone_venv)) if clone_venv.is_file() else Path(sys.executable)
+
+
 def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], model: Path, out_dir: Path, args: argparse.Namespace, strict: bool = False) -> list[str]:
     """Build the run_agent_cad.py command, validating local inputs first so a typo never counts as a CAD failure."""
-    cad_python = Path(args.cad_python).expanduser()
-    if not cad_python.is_absolute():
-        cad_python = ROOT / cad_python
-    if not cad_python.is_file():
-        raise ValueError(f"CAD interpreter not found: {cad_python} (create it with: python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock)")
-    command = [str(cad_python), "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(out_dir), "--reference", str(root / state["reference"]["path"]), "--cad-python", str(cad_python)]
+    cad_python = resolve_cad_python(args.cad_python)
+    command = [str(cad_python), "-B", str(SCRIPTS / "run_agent_cad.py"), str(model), str(out_dir), "--reference", str(root / state["reference"]["path"]), "--cad-python", str(cad_python)]
     if args.reference_view:
         view = parse_view(args.reference_view)
         command.append("--reference-view=" + ",".join(repr(value) for value in view))
@@ -394,7 +412,7 @@ def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], mode
 def run_summary(cad_dir: Path, report: dict[str, Any]) -> dict[str, Any]:
     inspection = report["inspection"]
     silhouette = report.get("silhouette") or {}
-    files = {key: str(cad_dir / report[key]["path"]) for key in ("comparison", "registered_overlay", "silhouette_overlay", "step", "preview") if key in report}
+    files = {key: str(cad_dir / report[key]["path"]) for key in ("comparison", "registered_overlay", "silhouette_overlay", "step", "glb", "stl", "3mf", "preview") if key in report}
     return {
         "files": files,
         "geometry": {"solid_count": inspection["solid_count"], "dimensions": inspection["dimensions"], "volume": inspection["volume"],
@@ -422,7 +440,7 @@ def preview(args: argparse.Namespace) -> None:
     previews.mkdir(exist_ok=True)
     number = len([path for path in previews.iterdir() if path.is_dir()]) + 1
     out_dir = previews / f"p{number:03d}"
-    result = subprocess.run(runner_command(root, state, plan, model, out_dir, args, args.strict_source), cwd=ROOT, text=True, capture_output=True, check=False)
+    result = subprocess.run(runner_command(root, state, plan, model, out_dir, args, args.strict_source), cwd=SCRIPTS.parent, text=True, capture_output=True, check=False)
     if result.returncode:
         inspection_path = out_dir / "inspection.json"
         detail = {"preview": "failed", "directory": str(out_dir), "error": (result.stderr or result.stdout).strip()[-2000:]}
@@ -555,6 +573,9 @@ def promote(args: argparse.Namespace) -> None:
     }
     if "silhouette_overlay" in stages["geometry"]["outputs"]:
         files["silhouette.png"] = verified_run_artifact(root, stages["geometry"], "silhouette_overlay")
+    if "glb" in stages["geometry"]["outputs"]:
+        # Small, coloured, and viewable on the web; STL/3MF are rebuilt from the model when needed.
+        files["model.glb"] = verified_run_artifact(root, stages["geometry"], "glb")
     if "registered_overlay" in stages["geometry"]["outputs"]:
         files["registered.png"] = verified_run_artifact(root, stages["geometry"], "registered_overlay")
     history = []
@@ -622,7 +643,7 @@ def main() -> int:
     source.set_defaults(func=source_review)
     run = commands.add_parser("run", help="execute geometry/STEP gate and generate comparison")
     run.add_argument("workflow", type=Path)
-    run.add_argument("--cad-python", default=".venv-cad/bin/python")
+    run.add_argument("--cad-python", help="interpreter with build123d (default: $IMG2CAD_CAD_PYTHON, ./.venv-cad, or this Python)")
     run.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z, e.g. 1,-1,0.7 or -0.35,-1,0.35")
     run.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object) for the silhouette score")
     run.set_defaults(func=run_geometry)
@@ -630,7 +651,7 @@ def main() -> int:
     draft.add_argument("workflow", type=Path)
     draft.add_argument("--model", type=Path, required=True)
     draft.add_argument("--strict-source", action="store_true", help="enforce the allowlist policy for this draft")
-    draft.add_argument("--cad-python", default=".venv-cad/bin/python")
+    draft.add_argument("--cad-python", help="interpreter with build123d (default: $IMG2CAD_CAD_PYTHON, ./.venv-cad, or this Python)")
     draft.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z")
     draft.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object)")
     draft.set_defaults(func=preview)
@@ -646,7 +667,8 @@ def main() -> int:
     library.add_argument("workflow", type=Path)
     library.add_argument("--name", required=True, help="lowercase slug for the example directory")
     library.add_argument("--technique", action="append", help="modeling technique the example demonstrates (repeatable)")
-    library.add_argument("--dest", type=Path, default=ROOT / "examples")
+    library.add_argument("--dest", type=Path, default=ROOT / "examples" if (ROOT / "examples").is_dir() else Path("examples"),
+                         help="example library directory (default: the repository's examples/)")
     library.set_defaults(func=promote)
     status = commands.add_parser("status", help="show workflow status and resume action")
     status.add_argument("workflow", type=Path)
