@@ -7,7 +7,7 @@ Each directory is a complete, accepted `scripts/agent_workflow.py` run copied he
 | [`mounting-plate`](mounting-plate/) | dimension-constrained | `Box` + `fillet` + `GridLocations`/`Hole` | prismatic parts with hole patterns, reading a dimensioned drawing, hole/volume constraints |
 | [`flanged-bushing`](flanged-bushing/) | dimension-constrained | half-profile + `revolve` | turned/round parts, bores, boss/hole constraints |
 | [`vase`](vase/) | visual approximation | silhouette-measured `Spline` + `revolve` + `offset` shell | round organic objects from one front view, hollow parts |
-| [`fish`](fish/) | visual approximation | `loft` through `Ellipse` sections + thin extruded fins | free-form organic bodies; includes a real `revise` → `r002` round in `history/` |
+| [`fish`](fish/) | visual approximation, coloured | `loft` through `Ellipse` sections + thin extruded fins, coloured `Compound` assembly | free-form organic bodies; per-part colours sampled from the image; a real `revise` → `r002` round in `history/` |
 | [`standing-horse`](standing-horse/) | visual approximation | point-to-point `Cone` limbs + rotated ball joints, ellipsoids, lofted barrel | animals with legs or any jointed/limbed shape; fusing many parts into one solid; using `preview` |
 | [`pagoda`](pagoda/) | visual approximation | ruled `loft` through squares for battered base and hipped roofs | buildings, roofs, stepped/tiered structures |
 | [`../benchmark/cases/visual-pose-dog`](../benchmark/cases/visual-pose-dog/) | visual approximation | scaled `Sphere`/`Cylinder` primitives in a `Compound` | quickest blocky approximation (frozen benchmark fixture; multi-solid, so it needs `allow_multiple_solids`) |

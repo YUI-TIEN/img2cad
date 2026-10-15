@@ -19,7 +19,7 @@
   "previous": null,
   "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
   "reviewer": "agent",
-  "run_report_sha256": "f48dfc60875c32f424801af8fece44a518604353633bbfa8d8ed2a2dd665d23d",
+  "run_report_sha256": "3ba841290a8150132446dbddd6fbd585da5666846550fc5ba36362cb72d1a4df",
   "schema_version": 1,
   "source_view": "Illustration side view compared with CAD Front (from -Y) panel",
   "verdict": "revise",
