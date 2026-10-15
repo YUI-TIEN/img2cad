@@ -127,11 +127,11 @@ const T = {
   en: { "3d": "3D", reference: "Input", comparison: "Views", registered: "Overlay", silhouette: "Silhouette", drawing: "Drawing",
         visual_approximation: "visual approximation", dimension_constrained: "dimension-constrained",
         size: "size", parts: "parts", silhouetteIou: "silhouette IoU", registeredIou: "registered IoU",
-        revisions: "revisions", source: "Source, plan and review →", check: "check", expected: "expected", measured: "measured" },
+        revisions: "revisions", realPhoto: "real photo", source: "Source, plan and review →", check: "check", expected: "expected", measured: "measured" },
   zh: { "3d": "3D", reference: "輸入", comparison: "多視角", registered: "疊圖", silhouette: "輪廓", drawing: "工程圖",
         visual_approximation: "外觀近似", dimension_constrained: "尺寸約束",
         size: "尺寸", parts: "零件", silhouetteIou: "輪廓 IoU", registeredIou: "對位 IoU",
-        revisions: "版本", source: "原始碼、規劃與審查 →", check: "檢查", expected: "預期", measured: "量測" },
+        revisions: "版本", realPhoto: "真實照片", source: "原始碼、規劃與審查 →", check: "檢查", expected: "預期", measured: "量測" },
 };
 const t = (key) => (T[lang] || T.en)[key] || key;
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -157,7 +157,7 @@ function card(example) {
       <div class="media"><div class="viewer" data-glb="${escapeHtml(example.files.glb)}" aria-label="3D model of ${escapeHtml(example.title)}"></div></div>
       <div class="body">
         <h3>${escapeHtml(example.title)}</h3>
-        <div><span class="tag ${example.target_type === "dimension_constrained" ? "dim" : ""}">${t(example.target_type)}</span></div>
+        <div><span class="tag ${example.target_type === "dimension_constrained" ? "dim" : ""}">${t(example.target_type)}</span>${example.real_photo ? `<span class="tag dim">${t("realPhoto")}</span>` : ""}</div>
         <div class="metrics">${metrics}</div>
         <ul class="techniques">${example.techniques.slice(0, 4).map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>
         ${checks}

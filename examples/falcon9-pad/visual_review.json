@@ -1,0 +1,26 @@
+{
+  "assumptions": [
+    "Scale from the rocket's published height; the towers are placed in the rocket's plane although they stand at other distances",
+    "Per-colour IoU is not meaningful here: at dusk the white rocket photographs tan and the steel towers are thin lines against the sky",
+    "The large towers cut off at the image edges and the transporter-erector's truss detail are left out",
+    "Depths (Y) are estimates: the photo is a single front view"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "Rocket outline (fairing tip, fairing, core) lands on the photographed rocket in registered.png",
+    "Both lightning towers line up: leg lines, nine X-braced bays, top platforms and masts",
+    "Launch mount block lines up with the light block at the bottom of the photo"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "9f0197f9f9346f866c6a737f32fcba8dc222e20acc5b3ecf4888e47ebcb29477",
+  "reviewer": "agent",
+  "run_report_sha256": "5f5492e840d6e0f9eb228488f443fe0c4785b278b983e1569286c5923696ee51",
+  "schema_version": 1,
+  "source_view": "Level front photo from far away; CAD front view registered in the photo's pixel frame (registered.png)",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}

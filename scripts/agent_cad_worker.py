@@ -164,12 +164,38 @@ def run_model(source_path: Path, output_dir: Path, strict: bool = False) -> dict
         raise ValueError("build_model() returned no solids")
     step_path = output_dir / "model.step"
     export_step(result, str(step_path))
+    check_step_round_trip(result, step_path)
     frame = namespace.get("IMAGE_FRAME")
     if frame is not None:
         # Registration of image pixels to model mm, used for the photo overlay.
         frame_data = frame.as_dict() if hasattr(frame, "as_dict") else dict(frame)
         (output_dir / "frame.json").write_text(json.dumps(frame_data, indent=2) + "\n", encoding="utf-8")
     return {"step": str(step_path), "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(), "policy": "strict" if strict else "open"}
+
+
+def check_step_round_trip(result: Any, step_path: Path) -> None:
+    """Fail when the written STEP is not the model that was built.
+
+    Some boolean results (seen: a scaled-sphere bowl fused to a cylinder)
+    write faces that STEP readers drop, so a part silently loses volume. The
+    gate measures the STEP, so without this check the loss looks like a
+    modelling choice instead of an export failure.
+    """
+    from build123d import import_step
+
+    from inspect_step import leaf_parts
+
+    built = float(result.volume)
+    exported = float(import_step(str(step_path)).volume)
+    if abs(exported - built) <= max(1e-6, 0.005 * abs(built)):
+        return
+    changed = []
+    for before, after in zip(leaf_parts(result), leaf_parts(import_step(str(step_path)))):
+        if abs(float(after.volume) - float(before.volume)) > max(1e-6, 0.005 * abs(float(before.volume))):
+            changed.append(f"{getattr(before, 'label', '') or 'part'}: {float(before.volume):.1f} -> {float(after.volume):.1f}")
+    raise ValueError(
+        f"STEP export lost geometry: volume {built:.1f} -> {exported:.1f} after re-import ({'; '.join(changed) or 'whole model'}). "
+        "Usually a fused shape with a non-uniformly scaled sphere/revolve; keep such pieces as separate parts instead of fusing them.")
 
 
 def restricted_builtins() -> dict[str, Any]:

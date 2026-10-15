@@ -1,0 +1,27 @@
+{
+  "assumptions": [
+    "Absolute scale from an assumed 120 mm saucer",
+    "White glaze (0.50) and crema (0.36) colour IoU are limited by the photo's lighting: the cup's inner wall reflects the coffee and classifies as crema",
+    "The spoon is a typical 105 mm teaspoon lying in the saucer; its bowl sits about 25 px right of the photo because the cup's overhang leaves no room where the pixel ray meets the saucer",
+    "Hidden back of the cup and the underside of the saucer are estimated"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "Registered silhouette IoU 0.98 against the cup+saucer+spoon mask: rims, cup sides and saucer edge line up within a few px",
+    "Cup handle ring lands on the handle loop in the photo",
+    "Red glaze region IoU 0.74; spoon handle lines up with the photographed handle",
+    "Crema surface sits at the right depth: its far edge matches the photo's crema ellipse"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "cc02f8ca188b167c775a7101b5d767d1e71792cf762c33d6fa15a4599b5a8de7",
+  "reviewer": "agent",
+  "run_report_sha256": "ef078c7d26106afe7eaaf952b7e367b932b6262d15fbee93f8ad4d38e5dd3c12",
+  "schema_version": 1,
+  "source_view": "Photo from the front, 57 degrees above the table; CAD rendered from the fitted perspective camera in registered.png and from (0,-0.542,0.84) in the comparison",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}

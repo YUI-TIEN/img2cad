@@ -27,7 +27,7 @@ from typing import Any
 SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
 REPO = "https://github.com/YUI-TIEN/img2cad"
-ORDER = ["fish", "standing-horse", "pagoda", "vase", "mounting-plate", "flanged-bushing"]
+ORDER = ["espresso-cup", "falcon9-pad", "fish", "standing-horse", "pagoda", "vase", "mounting-plate", "flanged-bushing"]
 COPY = ["reference.png", "comparison.png", "silhouette.png", "registered.png", "model.py"]
 
 
@@ -53,6 +53,7 @@ def example_summary(directory: Path) -> dict[str, Any]:
         "title": name,
         "subtitle": subtitle.rstrip(")"),
         "target_type": data["target_type"],
+        "real_photo": "real photo" in heading.lower(),
         "techniques": data.get("techniques", []),
         "size_mm": [round(dims[axis], 1) for axis in ("x", "y", "z")],
         "volume_mm3": round(data["geometry"]["volume"]),
