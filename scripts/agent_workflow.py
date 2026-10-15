@@ -86,7 +86,10 @@ def stage_next_step(revision: dict[str, Any], name: str) -> str:
 
 
 def revision_by_id(state: dict[str, Any], revision_id: str) -> dict[str, Any]:
-    return next(item for item in state["revisions"] if item["id"] == revision_id)
+    for item in state["revisions"]:
+        if item["id"] == revision_id:
+            return item
+    raise ValueError(f"unknown revision: {revision_id}")
 
 
 def recorded_stage_file(root: Path, state: dict[str, Any], revision: dict[str, Any], stage_name: str, output_key: str) -> tuple[Path, str]:
@@ -227,6 +230,8 @@ def record_plan(args: argparse.Namespace) -> None:
     for constraint in data["constraints"]:
         if not isinstance(constraint, dict) or constraint.get("name") not in {"length", "width", "height", "x", "y", "z"}:
             raise ValueError("measurable constraints must be named length/width/height or x/y/z")
+        if any(isinstance(constraint.get(key), bool) for key in ("value", "tolerance")):
+            raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
         if not isinstance(constraint.get("value"), (int, float)) or not math.isfinite(float(constraint["value"])) or not isinstance(constraint.get("tolerance", 0.02), (int, float)) or not math.isfinite(float(constraint.get("tolerance", 0.02))) or constraint.get("tolerance", 0.02) < 0:
             raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
     output = root / revision["directory"] / "plan.json"
@@ -271,6 +276,8 @@ def run_geometry(args: argparse.Namespace) -> None:
     stages = revision["stages"]
     if stages["source_review"]["status"] != "passed":
         raise ValueError("review model source before executing CAD")
+    if stages["geometry"]["status"] != "pending":
+        raise ValueError("geometry gate already ran for this revision; start a new revision to rerun")
     _, observations_hash = recorded_stage_file(root, state, revision, "observations", "observations")
     plan_path, plan_hash = recorded_stage_file(root, state, revision, "plan", "plan")
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -295,6 +302,8 @@ def run_geometry(args: argparse.Namespace) -> None:
     report_path = cad_dir / "run_report.json"
     report = read_json(report_path)
     if report.get("status") != "passed" or report.get("status_scope") != "geometry_and_step_only" or report.get("inspection", {}).get("status") != "passed":
+        stages["geometry"] = stage_record("failed", {"model_source": sha256(model), "reference": state["reference"]["sha256"]}, {}, command=command, exit_code=0)
+        save_state(root, state)
         raise ValueError("runner did not produce a passing geometry/STEP-only gate")
     artifacts = {name: sha256(cad_dir / report[name]["path"]) for name in ("model_source", "step", "preview", "reference", "comparison")}
     if artifacts["model_source"] != stages["source_review"]["outputs"]["model_source"]:
@@ -380,7 +389,7 @@ def new_revision(args: argparse.Namespace) -> None:
     inherited = {}
     for name in ("observations", "plan"):
         prior = previous["stages"][name]
-        inherited[name] = {**prior, "inherited_from": previous["id"]}
+        inherited[name] = {**prior, "inherited_from": prior.get("inherited_from") or previous["id"]}
     stages = {name: inherited.get(name, {"status": "pending", "inputs": {}, "outputs": {}}) for name in STAGES}
     stages["source_review"] = {"status": "pending", "inputs": {}, "outputs": {}}
     stages["geometry"] = {"status": "pending", "inputs": {}, "outputs": {}}

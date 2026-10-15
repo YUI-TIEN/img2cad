@@ -146,6 +146,36 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertEqual(second["stages"]["geometry"]["status"], "pending")
         self.assertEqual(second["stages"]["visual_review"]["status"], "pending")
 
+    def test_inherited_stages_resolve_across_multiple_revisions(self) -> None:
+        self.record_inputs()
+        for reason in ("first correction", "second correction"):
+            state = agent_workflow.load_state(self.workflow)
+            agent_workflow.active(state)["stages"]["geometry"]["status"] = "failed"
+            agent_workflow.save_state(self.workflow, state)
+            agent_workflow.new_revision(argparse.Namespace(workflow=self.workflow, reason=reason))
+        state = agent_workflow.load_state(self.workflow)
+        third = agent_workflow.active(state)
+        self.assertEqual(third["id"], "r003")
+        for stage, key in (("observations", "observations"), ("plan", "plan")):
+            self.assertEqual(third["stages"][stage]["inherited_from"], "r001")
+            path, _ = agent_workflow.recorded_stage_file(self.workflow, state, third, stage, key)
+            self.assertEqual(path, self.workflow / "revisions/r001" / f"{key}.json")
+
+    def test_geometry_gate_cannot_rerun_within_revision(self) -> None:
+        self.add_geometry_gate()
+        with self.assertRaisesRegex(ValueError, "already ran for this revision"):
+            agent_workflow.run_geometry(argparse.Namespace(workflow=self.workflow, cad_python="python", reference_view=None))
+
+    def test_plan_rejects_boolean_bounds(self) -> None:
+        observations = self.json_file("observations.json", {"observed": [], "inferred": [], "unknowns": []})
+        agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
+        plan = self.json_file("plan.json", {
+            "target_type": "visual_approximation", "goal": "g", "geometry_plan": ["box"],
+            "constraints": [{"name": "length", "value": 10, "tolerance": True}], "unknowns": [],
+        })
+        with self.assertRaisesRegex(ValueError, "numeric value and nonnegative tolerance"):
+            agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
+
     def test_revision_can_replace_inherited_evidence_and_plan(self) -> None:
         self.record_inputs()
         state = agent_workflow.load_state(self.workflow)
