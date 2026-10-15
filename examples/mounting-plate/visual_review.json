@@ -1,0 +1,23 @@
+{
+  "assumptions": [
+    "hole positions are confirmed visually; the dimension gate checks hole diameter and count, not position"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "outline proportions and four rounded corners match the top view",
+    "four corner holes and one larger center hole appear at the drawn positions",
+    "side view shows a thin constant-thickness plate"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "c8779c2b841586fc43e432223fac215fc40a4d39b684d4c2231f2daad5e6285e",
+  "reviewer": "agent",
+  "run_report_sha256": "f5d547eebdb6c6586eaa719a83b003a2ac35fc6d88de74892ec406fdcf2726f1",
+  "schema_version": 1,
+  "source_view": "Drawing top view compared with CAD Top X/Y panel; drawing side view compared with CAD Side X/Z panel",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}

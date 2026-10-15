@@ -13,15 +13,35 @@ import sys
 from typing import Any
 
 
+# Keep this list in sync with skills/img2cad/MODELING.md (enforced by tests).
 ALLOWED_IMPORTS = {
-    "Align", "Axis", "BuildLine", "BuildPart", "BuildSketch", "Circle", "Compound",
-    "Cone", "Cylinder", "Ellipse", "Line", "Locations", "Mode", "Plane", "Polyline",
-    "Rectangle", "SlotOverall", "Sphere", "Spline", "ThreePointArc", "ThreePointSpline",
-    "Vector", "add", "chamfer", "extrude", "fillet", "loft", "make_face", "revolve",
-    "sweep",
+    # Placement, enums, and selectors.
+    "Align", "Axis", "GeomType", "Keep", "Location", "Locations", "GridLocations",
+    "HexLocations", "PolarLocations", "Mode", "Plane", "Pos", "Rot", "Rotation", "Select",
+    "SortBy", "Until", "Vector",
+    # Builders and shape containers.
+    "BuildLine", "BuildPart", "BuildSketch", "Compound",
+    # 3D primitives and features.
+    "Box", "Cone", "CounterBoreHole", "CounterSinkHole", "Cylinder", "Hole", "Sphere",
+    "Torus", "Wedge",
+    # 2D sketch primitives.
+    "Circle", "Ellipse", "Polygon", "Rectangle", "RectangleRounded", "RegularPolygon",
+    "SlotCenterToCenter", "SlotOverall", "Trapezoid",
+    # 1D line primitives.
+    "Bezier", "CenterArc", "JernArc", "Line", "Polyline", "RadiusArc", "SagittaArc",
+    "Spline", "TangentArc", "ThreePointArc",
+    # Operations.
+    "add", "chamfer", "extrude", "fillet", "loft", "make_face", "mirror", "offset",
+    "revolve", "scale", "split", "sweep",
+}
+MATH_NAMES = {
+    "acos", "asin", "atan", "atan2", "ceil", "cos", "degrees", "e", "floor", "hypot",
+    "pi", "radians", "sin", "sqrt", "tan", "tau",
 }
 SAFE_BUILTINS = {
     "abs": abs,
+    "all": all,
+    "any": any,
     "bool": bool,
     "dict": dict,
     "enumerate": enumerate,
@@ -32,14 +52,24 @@ SAFE_BUILTINS = {
     "max": max,
     "min": min,
     "range": range,
+    "reversed": reversed,
     "round": round,
     "set": set,
+    "sorted": sorted,
     "str": str,
     "sum": sum,
     "tuple": tuple,
     "zip": zip,
 }
-SAFE_METHODS = {"append", "chamfer", "cut", "fuse", "mirror", "move", "rotate", "scale", "translate"}
+SAFE_METHODS = {
+    # Shape transforms and booleans.
+    "chamfer", "cut", "fuse", "intersect", "located", "mirror", "move", "moved", "offset",
+    "rotate", "scale", "translate",
+    # Read-only topology selectors, e.g. fillet(part.edges().filter_by(Axis.Z), 2).
+    "edges", "faces", "filter_by", "group_by", "solids", "sort_by", "vertices", "wires",
+    # Plain container helpers.
+    "append", "extend", "items", "keys", "values",
+}
 SAFE_NODES = {
     ast.Module, ast.ImportFrom, ast.alias, ast.FunctionDef, ast.arguments, ast.arg, ast.Return,
     ast.Assign, ast.AnnAssign, ast.Expr, ast.For, ast.If, ast.IfExp, ast.With, ast.withitem,
@@ -47,7 +77,8 @@ SAFE_NODES = {
     ast.Dict, ast.Attribute, ast.Call, ast.keyword, ast.BinOp, ast.Add, ast.Sub, ast.Mult,
     ast.Div, ast.Pow, ast.Mod, ast.UnaryOp, ast.USub, ast.UAdd, ast.BoolOp, ast.And, ast.Or,
     ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Subscript, ast.Slice,
-    ast.AugAssign,
+    ast.AugAssign, ast.Import, ast.ListComp, ast.GeneratorExp, ast.DictComp, ast.comprehension,
+    ast.FloorDiv, ast.Not, ast.In, ast.NotIn, ast.Starred,
 }
 BLOCKED_NAMES = {"__builtins__", "__import__", "eval", "exec", "compile", "open", "input", "globals", "locals", "vars", "getattr", "setattr", "delattr"}
 
@@ -67,12 +98,16 @@ def parse_model_source(source: str, label: str) -> tuple[ast.Module, set[str]]:
         if isinstance(node, ast.FunctionDef):
             if node.decorator_list or node.name.startswith("_"):
                 raise ValueError("decorators and private helper names are not allowed")
+        elif isinstance(node, ast.Import):
+            if [(alias.name, alias.asname) for alias in node.names] != [("math", None)]:
+                raise ValueError("model source may only use `import math` or approved build123d names")
         elif isinstance(node, ast.ImportFrom):
-            if node.level or node.module != "build123d":
-                raise ValueError("model source may only import approved names from build123d")
+            allowed = {"build123d": ALLOWED_IMPORTS, "math": MATH_NAMES}.get(node.module or "")
+            if node.level or allowed is None:
+                raise ValueError("model source may only import approved names from build123d or math")
             for alias in node.names:
-                if alias.name == "*" or alias.name not in ALLOWED_IMPORTS:
-                    raise ValueError(f"build123d import is not allowed: {alias.name}")
+                if alias.name == "*" or alias.name not in allowed or alias.asname:
+                    raise ValueError(f"{node.module} import is not allowed: {alias.name}")
         elif isinstance(node, ast.Name) and (node.id in BLOCKED_NAMES or node.id.startswith("__")):
             raise ValueError(f"restricted name in model source: {node.id}")
         elif isinstance(node, ast.Attribute):
@@ -80,11 +115,14 @@ def parse_model_source(source: str, label: str) -> tuple[ast.Module, set[str]]:
                 raise ValueError(f"private attribute access is not allowed: {node.attr}")
         elif isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
-                allowed_names = ALLOWED_IMPORTS | set(SAFE_BUILTINS) | functions | {"build_model"}
+                allowed_names = ALLOWED_IMPORTS | MATH_NAMES | set(SAFE_BUILTINS) | functions | {"build_model"}
                 if node.func.id not in allowed_names:
                     raise ValueError(f"call is not allowed: {node.func.id}")
             elif isinstance(node.func, ast.Attribute):
-                if node.func.attr not in SAFE_METHODS:
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "math":
+                    if node.func.attr not in MATH_NAMES:
+                        raise ValueError(f"math call is not allowed: {node.func.attr}")
+                elif node.func.attr not in SAFE_METHODS:
                     raise ValueError(f"method call is not allowed: {node.func.attr}")
             else:
                 raise ValueError("indirect/dynamic calls are not allowed")
@@ -98,14 +136,15 @@ def run_model(source_path: Path, output_dir: Path) -> dict[str, Any]:
 
     source = source_path.read_text(encoding="utf-8")
     tree, _functions = parse_model_source(source, str(source_path))
-    build123d = importlib.import_module("build123d")
+    modules = {"build123d": (importlib.import_module("build123d"), ALLOWED_IMPORTS), "math": (importlib.import_module("math"), MATH_NAMES)}
 
-    def restricted_import(name: str, globals: Any = None, locals: Any = None, fromlist: tuple[str, ...] = (), level: int = 0) -> Any:
-        if name != "build123d" or level:
+    def restricted_import(name: str, globals: Any = None, locals: Any = None, fromlist: tuple[str, ...] | None = (), level: int = 0) -> Any:
+        if name not in modules or level:
             raise ImportError(f"import blocked in CAD model: {name}")
-        if any(item == "*" or item not in ALLOWED_IMPORTS for item in fromlist):
-            raise ImportError("model requested a non-allowlisted build123d symbol")
-        return build123d
+        module, allowed = modules[name]
+        if any(item == "*" or item not in allowed for item in fromlist or ()):
+            raise ImportError(f"model requested a non-allowlisted {name} symbol")
+        return module
 
     namespace: dict[str, Any] = {"__builtins__": {**SAFE_BUILTINS, "__import__": restricted_import}}
     exec(compile(tree, str(source_path), "exec"), namespace, namespace)

@@ -1,0 +1,50 @@
+{
+  "target_type": "dimension_constrained",
+  "goal": "Editable plate whose outline, thickness, and hole sizes match the drawing exactly",
+  "geometry_plan": [
+    "Box(80, 50, 6) centered on the origin",
+    "fillet the four vertical edges (edges().filter_by(Axis.Z)) with radius 4 before any holes exist",
+    "GridLocations(64, 34, 2, 2) + Hole(radius=3) for the corner holes",
+    "Hole(radius=5) at the origin for the center hole"
+  ],
+  "constraints": [
+    {
+      "name": "length",
+      "value": 80,
+      "tolerance": 0.01
+    },
+    {
+      "name": "width",
+      "value": 50,
+      "tolerance": 0.01
+    },
+    {
+      "name": "height",
+      "value": 6,
+      "tolerance": 0.01
+    },
+    {
+      "name": "hole",
+      "diameter": 6,
+      "count": 4,
+      "tolerance": 0.01
+    },
+    {
+      "name": "hole",
+      "diameter": 10,
+      "count": 1,
+      "tolerance": 0.01
+    },
+    {
+      "name": "volume",
+      "value": 22767.8,
+      "tolerance": 1.0
+    }
+  ],
+  "derivations": [
+    "volume = 80*50*6 - 4*(4^2 - pi*4^2/4)*6 - 4*pi*3^2*6 - pi*5^2*6 = 22767.8 mm^3"
+  ],
+  "unknowns": [
+    "tolerances are not specified; 0.01 mm is the modeling check, not a manufacturing tolerance"
+  ]
+}

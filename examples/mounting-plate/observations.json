@@ -1,0 +1,38 @@
+{
+  "observed": [
+    "rectangular plate 80 x 50 with rounded corners labelled R4 (4x)",
+    "four corner holes labelled 4x Ø6 THRU on a 64 x 34 pitch",
+    "one centered hole labelled Ø10 THRU",
+    "side view shows a constant thickness of 6"
+  ],
+  "inferred": [
+    "holes are perpendicular to the large face because the drawing shows them as circles in top view and no countersink",
+    "plate is symmetric about both center lines because the hole pitch is centered within the outline"
+  ],
+  "unknowns": [
+    "material and edge finish",
+    "tolerances (none stated)"
+  ],
+  "evidence": [
+    {
+      "claim": "80 x 50 outline",
+      "source": "reference.png top view dimensions 80 and 50"
+    },
+    {
+      "claim": "4x Ø6 THRU at 64 x 34",
+      "source": "reference.png callout 4x Ø6 THRU and dimensions 64 (hole pitch) and 34"
+    },
+    {
+      "claim": "Ø10 THRU center hole",
+      "source": "reference.png callout next to the center circle"
+    },
+    {
+      "claim": "R4 corners",
+      "source": "reference.png note R4 corners (4x)"
+    },
+    {
+      "claim": "thickness 6",
+      "source": "reference.png side view dimension 6"
+    }
+  ]
+}

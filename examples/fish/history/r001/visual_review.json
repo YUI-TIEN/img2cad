@@ -1,0 +1,27 @@
+{
+  "assumptions": [
+    "body thickness is estimated"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "body outline, forked tail, and dorsal fin read clearly as a fish"
+  ],
+  "mismatches": [
+    "the eye is missing",
+    "the pectoral fin is missing"
+  ],
+  "next_changes": [
+    "add a sphere eye on each side near (-58, \u00b112.5, 10)",
+    "add a thin pectoral fin polygon on each side, sketched on Plane.XZ offset to just inside the body surface"
+  ],
+  "previous": null,
+  "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
+  "reviewer": "agent",
+  "run_report_sha256": "757326c238707c7fa4f708081e5d340c2ad998502b501d59e160f2b3202b0ded",
+  "schema_version": 1,
+  "source_view": "Illustration side view compared with CAD Side X/Z panel",
+  "verdict": "revise",
+  "visual_status": "recorded_not_independently_verified"
+}

@@ -1,0 +1,30 @@
+{
+  "observed": [
+    "side view of a turned part: a flange Ø40 x 5 thick and a body Ø24",
+    "overall length 25",
+    "dashed hidden lines and callout Ø12 THRU (bore)",
+    "dash-dot center line through the part"
+  ],
+  "inferred": [
+    "the part is rotationally symmetric about the center line, so one half-profile revolved describes it",
+    "the bore runs the full length because it is labelled THRU"
+  ],
+  "unknowns": [
+    "chamfers or edge breaks (none drawn)",
+    "material"
+  ],
+  "evidence": [
+    {
+      "claim": "flange Ø40 x 5",
+      "source": "reference.png dimensions Ø40 and 5"
+    },
+    {
+      "claim": "body Ø24, length 25",
+      "source": "reference.png dimensions Ø24 and 25"
+    },
+    {
+      "claim": "Ø12 through bore",
+      "source": "reference.png dashed lines and callout Ø12 THRU (bore)"
+    }
+  ]
+}

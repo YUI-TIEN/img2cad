@@ -1,0 +1,86 @@
+{
+  "dimension_checks": "not_applicable",
+  "file_sha256": {
+    "comparison.png": "a17eccd19e80f0011fb863b9759dab5f5897c47cd8c96cf9b44d63e69075436c",
+    "history/r001/comparison.png": "131d0fdbf81765de9e411b15ec31102a41d3cd585e61c6e2b6e2cc37b567c7a1",
+    "history/r001/model.py": "59782e64a1c457295e40bac20b33b1d7b80d869911ac456ae03795ca16d5ac37",
+    "history/r001/visual_review.json": "714524726e3c106d5ea3dd4964ceeab65a633437c21d7cd6792224d23bb9bd25",
+    "model.py": "b5cea8b1bbe119afb09b4b5d03376e28619132b56616e627ae2b74fb45594b1c",
+    "observations.json": "9813efb01a2dd777abb3a447ae20b89d670ba5a3a747cc9c9c98e02b251c68d6",
+    "plan.json": "fd87ec702ba37f46325087214c0d118a57106a0da2ac5c323788febab7e14834",
+    "reference.png": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
+    "silhouette.png": "2d52a36133bbbd3d2a62041c63c50d149206ea7821bb99312d4705df1ee59260",
+    "visual_review.json": "6850d801ea7d96bddace027bea348c5b69763c7446f3ec82f2a9beecc35088ee"
+  },
+  "final_revision": "r002",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [],
+    "dimensions": {
+      "x": 220.0000002,
+      "y": 36.132138211581314,
+      "z": 100.19970157908877
+    },
+    "solid_count": 1,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 281591.75754598534
+  },
+  "human_acceptance": "not_verified",
+  "name": "fish",
+  "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
+  "revisions": [
+    {
+      "dimensions": "not_applicable",
+      "files": "history/r001",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "revise"
+    },
+    {
+      "dimensions": "not_applicable",
+      "geometry": "passed",
+      "id": "r002",
+      "reason": "r001 review: eye and pectoral fin missing",
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.9513,
+    "best_view": "Side \u00b7 X/Z",
+    "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.2072,
+    "reliable": true,
+    "views": {
+      "Front \u00b7 Y/Z": {
+        "iou": 0.3405,
+        "mirrored": false
+      },
+      "Isometric": {
+        "iou": 0.3947,
+        "mirrored": true
+      },
+      "Side \u00b7 X/Z": {
+        "iou": 0.9513,
+        "mirrored": false
+      },
+      "Top \u00b7 X/Y": {
+        "iou": 0.3775,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "visual_approximation",
+  "techniques": [
+    "loft through Ellipse sections on Plane.YZ.offset(x)",
+    "thin fins: Polygon on Plane.XZ + extrude(both=True)",
+    "revise loop: r001 missing features -> r002"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}

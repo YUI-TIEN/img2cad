@@ -1,0 +1,22 @@
+{
+  "assumptions": [
+    "body thickness and scale are estimated",
+    "the faceted shading on the body is preview tessellation, not model geometry"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "body outline, forked tail, dorsal fin, pectoral fin, and eye are all present and placed as in the illustration"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
+  "reviewer": "agent",
+  "run_report_sha256": "c43ef2b9faafdc7af48e2824278433cc412e48e5c09179ff9f3797116a5ee69e",
+  "schema_version": 1,
+  "source_view": "Illustration side view compared with CAD Side X/Z panel",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}

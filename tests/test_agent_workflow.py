@@ -176,6 +176,66 @@ class AgentWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "numeric value and nonnegative tolerance"):
             agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
 
+    def test_feature_and_volume_constraints_are_validated_and_checked(self) -> None:
+        for bad in (
+            {"name": "hole", "diameter": 6},
+            {"name": "hole", "diameter": -1, "count": 2},
+            {"name": "boss", "diameter": 6, "count": True},
+            {"name": "volume", "value": 100},
+            {"name": "thread", "value": 1},
+        ):
+            with self.assertRaises(ValueError):
+                agent_workflow.validate_constraint(bad)
+        inspection = {
+            "volume": 23100.0,
+            "dimensions": {"x": 80.0, "y": 50.0, "z": 6.0},
+            "cylindrical_features": [
+                *({"kind": "hole", "diameter": 6.0, "full": True} for _ in range(4)),
+                {"kind": "hole", "diameter": 10.0, "full": True},
+                *({"kind": "boss", "diameter": 8.0, "full": False} for _ in range(4)),
+            ],
+        }
+        hole = {"name": "hole", "diameter": 6, "count": 4, "tolerance": 0.05}
+        agent_workflow.validate_constraint(hole)
+        self.assertTrue(agent_workflow.check_constraint(hole, inspection)["passed"])
+        self.assertFalse(agent_workflow.check_constraint({**hole, "count": 5}, inspection)["passed"])
+        fillet_round = {"name": "boss", "diameter": 8, "count": 4}
+        self.assertEqual(agent_workflow.check_constraint(fillet_round, inspection)["measured"], 0)
+        self.assertTrue(agent_workflow.check_constraint({"name": "volume", "value": 23000, "tolerance": 150}, inspection)["passed"])
+        self.assertTrue(agent_workflow.check_constraint({"name": "length", "value": 80}, inspection)["passed"])
+
+    def acceptable_notes(self) -> Path:
+        return self.json_file("review.json", {
+            "reviewer": "agent", "verdict": "acceptable", "source_view": "side view vs CAD side panel",
+            "matches": ["body reads correctly"], "mismatches": [], "next_changes": [], "assumptions": ["scale estimated"],
+        })
+
+    def test_promote_copies_accepted_run_into_example_library(self) -> None:
+        self.add_geometry_gate()
+        library = self.root / "library"
+        promote_args = argparse.Namespace(workflow=self.workflow, name="test-dog", technique=["scaled primitives"], dest=library)
+        with self.assertRaisesRegex(ValueError, "acceptable visual review"):
+            agent_workflow.promote(promote_args)
+        agent_workflow.review(argparse.Namespace(workflow=self.workflow, notes=self.acceptable_notes()))
+        with self.assertRaisesRegex(ValueError, "lowercase slug"):
+            agent_workflow.promote(argparse.Namespace(**{**vars(promote_args), "name": "Bad Name"}))
+        agent_workflow.promote(promote_args)
+        example = library / "test-dog"
+        summary = json.loads((example / "example.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["techniques"], ["scaled primitives"])
+        self.assertEqual(summary["human_acceptance"], "not_verified")
+        for name in ("reference.png", "observations.json", "plan.json", "model.py", "comparison.png", "visual_review.json"):
+            self.assertEqual(agent_workflow.sha256(example / name), summary["file_sha256"][name])
+        with self.assertRaisesRegex(ValueError, "refusing to overwrite"):
+            agent_workflow.promote(promote_args)
+
+    def test_promote_rejects_tampered_run_artifacts(self) -> None:
+        cad = self.add_geometry_gate()
+        agent_workflow.review(argparse.Namespace(workflow=self.workflow, notes=self.acceptable_notes()))
+        (cad / "comparison.png").write_text("tampered", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "stale geometry artifact hash: comparison"):
+            agent_workflow.promote(argparse.Namespace(workflow=self.workflow, name="test-dog", technique=["x"], dest=self.root / "library"))
+
     def test_revision_can_replace_inherited_evidence_and_plan(self) -> None:
         self.record_inputs()
         state = agent_workflow.load_state(self.workflow)

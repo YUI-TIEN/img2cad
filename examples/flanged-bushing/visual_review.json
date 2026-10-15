@@ -1,0 +1,23 @@
+{
+  "assumptions": [
+    "the CAD axis is vertical while the drawing axis is horizontal; this is an orientation choice, not a shape difference",
+    "the silhouette score is low because the reference is a line drawing with dimension text; rely on the dimension gate here"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "thin wide flange at one end and narrower body match the drawn step",
+    "the through bore is visible in the Top and Isometric panels"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "5eccd8391799e01def0ec952f4f74298c974743f331e21695f28ce9c1b7dab8e",
+  "reviewer": "agent",
+  "run_report_sha256": "4da65f0effe927158a9827b5add7fb67ec96230a84f850704462f7132ba80085",
+  "schema_version": 1,
+  "source_view": "Drawing side view (axis horizontal) compared with CAD Side X/Z panel (axis vertical) and Isometric panel",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}
