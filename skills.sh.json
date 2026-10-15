@@ -1,0 +1,6 @@
+{
+  "name": "img2cad",
+  "description": "Image to editable, coloured CAD with a staged, self-checking agent workflow.",
+  "repository": "https://github.com/YUI-TIEN/img2cad",
+  "skills": ["skills/img2cad", "skills/cad-output"]
+}

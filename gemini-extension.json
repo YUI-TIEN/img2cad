@@ -1,0 +1,12 @@
+{
+  "name": "img2cad",
+  "version": "0.9.0",
+  "description": "Turn images, photos, sketches and drawings into editable, coloured CAD (STEP, GLB, 3MF, STL) with a staged, self-checking agent workflow.",
+  "contextFileName": "AGENTS.md",
+  "mcpServers": {
+    "img2cad": {
+      "command": "uvx",
+      "args": ["--python", "3.13", "--from", "git+https://github.com/YUI-TIEN/img2cad", "img2cad", "mcp"]
+    }
+  }
+}

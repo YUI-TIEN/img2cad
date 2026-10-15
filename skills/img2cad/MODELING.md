@@ -45,7 +45,7 @@ Use these whenever the image has details that matter (paint, markings, feature o
 2. **Trace colour regions** instead of guessing feature shapes:
 
    ```sh
-   .venv-cad/bin/python scripts/trace_regions.py reference.png --mask mask.png \
+   img2cad trace reference.png --mask mask.png \
      --color white=240,240,236 --color shade=200,200,196 --color black=30,28,30 --color pink=240,170,165 \
      --trace black --trace pink --out regions.json --overlay regions.png
    ```

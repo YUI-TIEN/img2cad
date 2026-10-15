@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "img2cad"
+dynamic = ["version"]
+description = "Turn images, sketches and drawings into editable, coloured CAD (STEP/GLB/STL/3MF) with an agent workflow."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.14"
+authors = [{ name = "YUI-TIEN" }]
+keywords = ["cad", "image-to-cad", "build123d", "step", "agents"]
+dependencies = [
+    "build123d==0.13.0",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pillow>=10",
+]
+
+[project.urls]
+Homepage = "https://yui-tien.github.io/img2cad/"
+Repository = "https://github.com/YUI-TIEN/img2cad"
+Issues = "https://github.com/YUI-TIEN/img2cad/issues"
+
+[project.scripts]
+img2cad = "img2cad.img2cad_cli:main"
+
+[tool.setuptools]
+# The scripts/ directory is the package: every tool keeps working both from a
+# clone (python scripts/<tool>.py) and installed (img2cad <command>).
+packages = ["img2cad"]
+package-dir = { "img2cad" = "scripts" }
+
+[tool.setuptools.package-data]
+img2cad = ["vendor/three/*", "vendor/three/**/*"]
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }

@@ -127,5 +127,26 @@ class ExampleLibraryTests(unittest.TestCase):
             self.assertGreater(regions["#f5f5f2"]["iou"], 0.95, regions)
 
 
+    @unittest.skipUnless(os.environ.get("IMG2CAD_CAD_PYTHON"), "set IMG2CAD_CAD_PYTHON to run the CAD exports")
+    def test_runs_export_coloured_glb_and_3mf_and_stl(self) -> None:
+        import struct
+        import zipfile
+        with tempfile.TemporaryDirectory() as temp:
+            run_dir = Path(temp) / "run"
+            result = subprocess.run([os.environ["IMG2CAD_CAD_PYTHON"], "-B", str(ROOT / "scripts/run_agent_cad.py"), str(ROOT / "examples/fish/model.py"), str(run_dir),
+                                     "--cad-python", os.environ["IMG2CAD_CAD_PYTHON"]], capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads((run_dir / "run_report.json").read_text(encoding="utf-8"))
+            for name in ("glb", "stl", "3mf"):
+                self.assertEqual(sha256(run_dir / report[name]["path"]), report[name]["sha256"])
+            glb = (run_dir / "model.glb").read_bytes()
+            gltf = json.loads(glb[20:20 + struct.unpack("<I", glb[12:16])[0]])
+            self.assertIn("body", [node.get("name") for node in gltf["nodes"]])
+            self.assertGreaterEqual(len(gltf["materials"]), 4, "part colours become glTF materials")
+            model = zipfile.ZipFile(run_dir / "model.3mf").read("3D/3dmodel.model").decode()
+            self.assertIn('displaycolor="#F08C3CFF"', model)
+            self.assertEqual(model.count("<object "), 9, "one 3MF object per fish part")
+
+
 if __name__ == "__main__":
     unittest.main()

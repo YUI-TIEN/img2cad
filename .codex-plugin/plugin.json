@@ -1,0 +1,18 @@
+{
+  "name": "img2cad",
+  "version": "0.9.0",
+  "description": "Turn images, photos, sketches and drawings into editable, coloured CAD (STEP, GLB, 3MF, STL) with a staged, self-checking agent workflow.",
+  "author": {"name": "YUI-TIEN", "url": "https://github.com/YUI-TIEN"},
+  "homepage": "https://yui-tien.github.io/img2cad/",
+  "repository": "https://github.com/YUI-TIEN/img2cad",
+  "license": "MIT",
+  "keywords": ["cad", "image-to-cad", "build123d", "step", "3d-printing", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "img2cad",
+    "shortDescription": "Image to editable, coloured CAD",
+    "category": "Design",
+    "websiteURL": "https://yui-tien.github.io/img2cad/"
+  }
+}
