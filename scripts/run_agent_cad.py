@@ -228,7 +228,7 @@ def nearest_palette(pixels: np.ndarray, palette: list[tuple[int, int, int]]) -> 
 
 def registered_overlay(step_path: Path, reference: Path, frame: dict[str, Any], tolerance: float, output_path: Path,
                        mask_path: Path | None = None, auto_subject: bool = False) -> dict[str, Any]:
-    """Render the front view in the reference image's own pixel frame and score it.
+    """Render the CAD from the frame's camera in the reference image's own pixel frame and score it.
 
     `frame` (written by the model as IMAGE_FRAME) maps image pixels to model
     mm, so the CAD lands exactly where the model claims it is. The overlay
@@ -244,10 +244,19 @@ def registered_overlay(step_path: Path, reference: Path, frame: dict[str, Any], 
     scale = float(frame["mm_per_px"])
     origin_x, origin_y = (float(value) for value in frame["origin_px"])
     coords, faces, face_parts, part_colors = load_mesh(step_path, tolerance)
-    tx = origin_x + coords[:, 0] / scale
-    ty = origin_y - coords[:, 2] / scale
-    depth = -coords[:, 1]  # camera on -Y: smaller y is nearer
-    light = camera_light(np.array((0.0, -1.0, 0.0)), np.array((0.0, 0.0, 1.0)), np.array((1.0, 0.0, 0.0)))
+    # Front view by default; angled frames carry their camera basis.
+    right = np.asarray(frame.get("screen_right", (1.0, 0.0, 0.0)), dtype=np.float64)
+    up = np.asarray(frame.get("screen_up", (0.0, 0.0, 1.0)), dtype=np.float64)
+    toward = np.asarray(frame.get("view_direction", (0.0, -1.0, 0.0)), dtype=np.float64)
+    factor = 1.0
+    if frame.get("camera_distance"):
+        # Perspective: magnification relative to the origin's depth.
+        distance = float(frame["camera_distance"])
+        factor = distance / (distance - coords @ toward)
+    tx = origin_x + coords @ right * factor / scale
+    ty = origin_y - coords @ up * factor / scale
+    depth = coords @ toward  # rasterize keeps the largest depth: nearest the camera
+    light = camera_light(toward, up, right)
     render, part_ids, _ = rasterize(tx, ty, depth, coords, faces, face_parts, part_colors, light, width, height, PANEL_BACKGROUND)
     cad_mask = part_ids >= 0
     photo_pixels = np.asarray(photo)
