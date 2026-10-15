@@ -30,3 +30,7 @@ CI (`.github/workflows/test.yml`) runs both on every pull request.
 ## Reporting problems
 
 Open an issue with the command you ran, the full error, and (when you can share it) the image and `model.py`.
+
+## Website
+
+The GitHub Pages site is built from `site/` and `examples/` by `scripts/build_site.py`, which rebuilds every example from its `model.py`. Preview locally with `.venv-cad/bin/python scripts/build_site.py --out _site && python3 -m http.server -d _site 8000`. Pushing to `main` deploys it (`.github/workflows/pages.yml`).

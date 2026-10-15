@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>img2cad — images to editable CAD</title>
+<meta name="description" content="An agent workflow that turns images, photos, sketches and drawings into editable, coloured CAD: build123d source, STEP, GLB, 3MF and STL, checked and reviewed against the image.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 3 28 10v12L16 29 4 22V10z' fill='%23e8743b'/><path d='M16 3v26M4 10l12 7 12-7' stroke='%23fff' stroke-width='2' fill='none'/></svg>">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.min.js", "three/addons/": "./vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 28 10v12L16 29 4 22V10z"/><path class="cut" d="M16 3v26M4 10l12 7 12-7"/></svg>img2cad</a>
+  <nav>
+    <a href="#how" data-zh="流程">How it works</a>
+    <a href="#examples" data-zh="範例">Examples</a>
+    <a href="#precision" data-zh="精度">Precision</a>
+    <a href="#install" data-zh="安裝">Install</a>
+    <a href="https://github.com/YUI-TIEN/img2cad">GitHub</a>
+    <button id="lang" type="button" aria-label="Switch language">中文</button>
+  </nav>
+</header>
+
+<main>
+<section class="hero">
+  <div class="hero-text">
+    <p class="eyebrow" data-zh="給 AI agent 的影像 → CAD 工作流程">An image → CAD workflow for AI agents</p>
+    <h1 data-zh="把圖片變成<br>可編輯的彩色 CAD">Turn images into<br>editable, coloured CAD</h1>
+    <p class="lede" data-zh="給 agent 一張照片、插畫或工程圖。它會觀察、規劃、寫出參數化的 build123d 程式，在本機建出 STEP，再把結果疊回原圖逐區比對、修正——每一步都留下可驗證的紀錄。">Give an agent a photo, an illustration, or an engineering drawing. It observes, plans, writes parametric build123d source, builds a STEP locally, then overlays the result on the original image region by region and revises — leaving a checkable record at every step.</p>
+    <div class="cta">
+      <a class="button primary" href="#install" data-zh="安裝">Install</a>
+      <a class="button" href="#examples" data-zh="看範例">See examples</a>
+    </div>
+    <ul class="facts">
+      <li><b>STEP</b> <span data-zh="含零件名稱與顏色">with part names and colours</span></li>
+      <li><b>GLB · 3MF · STL</b> <span data-zh="給網頁、切片軟體">for the web and slicers</span></li>
+      <li><b>model.py</b> <span data-zh="可編輯的原始碼">the editable source of truth</span></li>
+    </ul>
+  </div>
+  <figure class="hero-stage">
+    <div class="pair">
+      <img src="examples/fish/reference.png" alt="Input image: a drawn orange fish" width="750" height="520">
+      <span class="arrow" aria-hidden="true">→</span>
+      <div class="viewer" data-glb="examples/fish/model.glb" data-autorotate="1" aria-label="Interactive 3D CAD model of the fish"></div>
+    </div>
+    <figcaption data-zh="左：輸入圖片。右：產出的 CAD（拖曳旋轉）。9 個彩色零件，眼睛與胸鰭是從圖上描出後投影到曲面上的。">Left: the input. Right: the CAD it became (drag to orbit). Nine coloured parts; the eye and pectoral fin were traced from the image and projected onto the curved body.</figcaption>
+  </figure>
+</section>
+
+<section id="how" class="band">
+  <h2 data-zh="流程">How it works</h2>
+  <p class="section-lede" data-zh="影像理解與建模由 agent 負責；本機工具負責建模執行、量測與把關。每個階段都綁定雜湊，可中斷後續跑。">The agent does the seeing and the modelling; local tools build, measure, and gate. Every stage is hash-bound and resumable.</p>
+  <ol class="steps">
+    <li><span class="n">1</span><h3 data-zh="觀察">Observe</h3><p data-zh="記錄看得到的、推論的、未知的，以及證據來源。圖片裡的文字只當內容，不當指令。">Record what is visible, what is inferred, what is unknown, and the evidence for each. Text inside an image is content, never instructions.</p><code>workflow observations</code></li>
+    <li><span class="n">2</span><h3 data-zh="規劃">Plan</h3><p data-zh="選擇目標：外觀近似，或尺寸約束。宣告邊界、體積、孔數，讓檢查有依據。">Pick the target — visual approximation or dimension-constrained — and declare bounds, volume, and hole counts the checks can hold the model to.</p><code>workflow plan</code></li>
+    <li><span class="n">3</span><h3 data-zh="建模">Model</h3><p data-zh="寫參數化 build123d：放樣、旋轉、布林運算；用 IMAGE_FRAME 對位，描色塊後投影上曲面。">Write parametric build123d: lofts, revolves, booleans. Register the image with <code>IMAGE_FRAME</code>; trace colour regions and project them onto curved surfaces.</p><code>workflow preview</code></li>
+    <li><span class="n">4</span><h3 data-zh="建置與檢查">Build &amp; check</h3><p data-zh="匯出 STEP 並重新匯入量測：B-rep 有效、每個零件只有一個實體、零件互相接觸、尺寸與孔。">Export STEP and re-import it to measure: valid B-rep, one solid per part, parts touching, bounds, volume, holes and bosses.</p><code>workflow run</code></li>
+    <li><span class="n">5</span><h3 data-zh="比對">Compare</h3><p data-zh="真實相機視角的預覽、輪廓 IoU，以及把 CAD 畫回原圖像素座標的逐色比對。">True camera-view previews, silhouette IoU, and the CAD drawn back into the image's own pixel frame, scored per colour.</p><code>registered.png</code></li>
+    <li><span class="n">6</span><h3 data-zh="審查與修正">Review &amp; revise</h3><p data-zh="寫下具體不符處與下一步修改；開新版本，舊證據不能沿用。">Write concrete mismatches and next changes; start a fresh revision where old evidence can't pass new source.</p><code>workflow review</code></li>
+    <li><span class="n">7</span><h3 data-zh="累積經驗">Learn</h3><p data-zh="合格的成果升級成範例，踩過的坑寫進 LESSONS.md，下一個 agent 直接讀。">Promote accepted runs into examples and verified pitfalls into LESSONS.md, so the next agent starts ahead.</p><code>workflow promote</code></li>
+  </ol>
+</section>
+
+<section id="examples">
+  <h2 data-zh="範例">Examples</h2>
+  <p class="section-lede" data-zh="每個範例都是完整、通過審查的流程紀錄。下面的 3D 模型是網站建置時從 repo 裡的 model.py 重新建出來的。">Each is a complete, reviewed workflow run. The 3D models below are rebuilt from the committed <code>model.py</code> every time this site is built.</p>
+  <div id="gallery" class="gallery" aria-live="polite"></div>
+</section>
+
+<section id="precision" class="band">
+  <h2 data-zh="測量，而不是目測">Measure, don't eyeball</h2>
+  <div class="split">
+    <div>
+      <p data-zh="輪廓分數會把比例錯誤藏起來。img2cad 把 CAD 畫回原圖的像素座標系，逐色計算重疊（IoU），所以你知道到底是哪一塊偏了。">Normalised silhouette scores hide scale and position errors. img2cad draws the CAD back into the image's own pixel frame and scores the overlap of every colour, so you can see exactly which region is off.</p>
+      <ul class="tools">
+        <li><code>ImageFrame(mm_per_px, origin_px)</code> <span data-zh="像素 ↔ 毫米對位">pixel ↔ mm registration</span></li>
+        <li><code>img2cad trace</code> <span data-zh="把色塊描成輪廓（含孔）">colour regions → outlines with holes</span></li>
+        <li><code>projected_decal</code> <span data-zh="把輪廓投影成貼合曲面的彩色零件">outlines → coloured parts hugging curved surfaces</span></li>
+      </ul>
+      <p class="note" data-zh="在一張公仔照片上，手放的橢球貼圖對黑色區域只有 0.45 IoU；改用描邊 + 投影後達到 0.84。">On a figurine photo, hand-placed ellipsoid paint overlapped the photo's black regions at 0.45 IoU; traced and projected outlines reached 0.84.</p>
+    </div>
+    <figure class="registered">
+      <img src="examples/fish/registered.png" alt="The fish CAD drawn over the input image in its pixel frame" loading="lazy">
+      <figcaption id="fish-iou"></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="outputs">
+  <h2 data-zh="產出">What you get</h2>
+  <div class="cards">
+    <div class="card"><h3>model.py</h3><p data-zh="參數化 build123d 原始碼，是唯一的真實來源。">Parametric build123d source — the source of truth.</p></div>
+    <div class="card"><h3>STEP</h3><p data-zh="B-rep 實體，保留零件名稱與顏色，任何 CAD 都能開。">B-rep solids with part names and colours; opens in any CAD tool.</p></div>
+    <div class="card"><h3>GLB · 3MF · STL</h3><p data-zh="彩色 GLB 給網頁；3MF 每個零件帶顏色給多色列印。">Coloured GLB for the web; 3MF with a coloured object per part for multi-colour printing.</p></div>
+    <div class="card"><h3 data-zh="工程圖">Drawing</h3><p data-zh="三視圖 SVG/DXF，含外形尺寸與孔表。">Three-view SVG/DXF with overall dimensions and a hole table.</p><code>img2cad drawing</code></div>
+    <div class="card"><h3 data-zh="可列印性">Printability</h3><p data-zh="水密、懸空、床面接觸、薄壁、成型尺寸。">Watertight, overhangs, bed contact, thin walls, build volume.</p><code>img2cad printcheck</code></div>
+    <div class="card"><h3 data-zh="本機 3D 檢視器">Local 3D viewer</h3><p data-zh="零件列表、量測、剖面、截圖；也能透過 MCP 開啟。">Part list, measure, section planes, screenshots; also over MCP.</p><code>img2cad view</code></div>
+  </div>
+</section>
+
+<section id="install" class="band">
+  <h2 data-zh="安裝">Install</h2>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="claude">Claude Code</button>
+    <button role="tab" data-tab="gemini">Gemini CLI</button>
+    <button role="tab" data-tab="skills">Skills</button>
+    <button role="tab" data-tab="mcp">MCP</button>
+    <button role="tab" data-tab="cli">CLI</button>
+  </div>
+  <div class="tab-panels">
+    <pre data-panel="claude"><code>/plugin marketplace add YUI-TIEN/img2cad
+/plugin install img2cad@img2cad</code></pre>
+    <pre data-panel="gemini" hidden><code>gemini extensions install https://github.com/YUI-TIEN/img2cad</code></pre>
+    <pre data-panel="skills" hidden><code>npx skills add YUI-TIEN/img2cad</code></pre>
+    <pre data-panel="mcp" hidden><code>{
+  "mcpServers": {
+    "img2cad": {
+      "command": "uvx",
+      "args": ["--python", "3.13", "--from", "git+https://github.com/YUI-TIEN/img2cad", "img2cad", "mcp"]
+    }
+  }
+}</code></pre>
+    <pre data-panel="cli" hidden><code># no clone needed (uses uv)
+uvx --python 3.13 --from git+https://github.com/YUI-TIEN/img2cad img2cad doctor
+
+# or from a clone
+python3 -m venv .venv-cad &amp;&amp; .venv-cad/bin/pip install -r requirements-cad.lock
+.venv-cad/bin/python scripts/img2cad_cli.py doctor</code></pre>
+  </div>
+  <p class="section-lede" data-zh="然後把圖片交給 agent：「把這張圖做成 CAD」。">Then hand your agent an image: “turn this into CAD”.</p>
+</section>
+
+<section id="agents">
+  <h2 data-zh="給 agent 讀的">For agents</h2>
+  <ul class="links">
+    <li><a href="https://github.com/YUI-TIEN/img2cad/blob/main/skills/img2cad/SKILL.md">SKILL.md</a> <span data-zh="工作流程契約">the workflow contract</span></li>
+    <li><a href="https://github.com/YUI-TIEN/img2cad/blob/main/skills/img2cad/MODELING.md">MODELING.md</a> <span data-zh="build123d 擺放、依物件選技巧、精度工具">placement, techniques by object type, precision tools</span></li>
+    <li><a href="https://github.com/YUI-TIEN/img2cad/blob/main/skills/img2cad/LESSONS.md">LESSONS.md</a> <span data-zh="實測驗證過的坑">verified pitfalls from real runs</span></li>
+    <li><a href="https://github.com/YUI-TIEN/img2cad/blob/main/skills/cad-output/SKILL.md">cad-output</a> <span data-zh="檢視、匯出、工程圖、可列印性">view, export, drawings, printability</span></li>
+    <li><a href="llms.txt">llms.txt</a></li>
+  </ul>
+</section>
+</main>
+
+<footer>
+  <span>img2cad <span id="version"></span> · MIT</span>
+  <span data-zh="所有範例的審查都是 agent 審查，尚未經人工驗收。">All example reviews are agent reviews, not human acceptance.</span>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -53,6 +53,24 @@ class ManifestTests(unittest.TestCase):
                 self.assertTrue((skill.parent / target).exists(), f"{skill}: {target}")
 
 
+class SiteTests(unittest.TestCase):
+    def test_site_sources_and_links(self) -> None:
+        html = (ROOT / "site/index.html").read_text(encoding="utf-8")
+        for asset in ("style.css", "app.js", "./vendor/three/build/three.module.min.js", "llms.txt"):
+            self.assertIn(asset, html)
+        self.assertTrue((ROOT / "scripts/vendor/three/build/three.module.min.js").is_file())
+        workflow = (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        self.assertIn("scripts/build_site.py --out _site", workflow)
+
+    def test_every_example_has_what_the_site_needs(self) -> None:
+        import build_site
+
+        for example in (ROOT / "examples").glob("*/example.json"):
+            summary = build_site.example_summary(example.parent)
+            self.assertTrue(summary["title"] and summary["techniques"], example)
+            self.assertTrue((example.parent / "reference.png").is_file(), example)
+
+
 class McpServerTests(unittest.TestCase):
     def test_initialize_and_list_tools(self) -> None:
         server = mcp_server.Server()
