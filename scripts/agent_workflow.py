@@ -22,7 +22,7 @@ from record_visual_review import record as record_visual_review
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_NAME = "workflow.json"
-RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay", "reference_mask")
+RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay", "reference_mask", "registered_overlay")
 STAGES = ("observations", "plan", "source_review", "geometry", "dimensions", "visual_review")
 
 
@@ -394,13 +394,14 @@ def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], mode
 def run_summary(cad_dir: Path, report: dict[str, Any]) -> dict[str, Any]:
     inspection = report["inspection"]
     silhouette = report.get("silhouette") or {}
-    files = {key: str(cad_dir / report[key]["path"]) for key in ("comparison", "silhouette_overlay", "step", "preview") if key in report}
+    files = {key: str(cad_dir / report[key]["path"]) for key in ("comparison", "registered_overlay", "silhouette_overlay", "step", "preview") if key in report}
     return {
         "files": files,
         "geometry": {"solid_count": inspection["solid_count"], "dimensions": inspection["dimensions"], "volume": inspection["volume"],
                      "parts": [{"label": part["label"], "color": part["color"], "solid_count": part["solid_count"]} for part in inspection.get("parts", [])]},
         "silhouette": {"best_view": silhouette.get("best_view"), "best_iou": silhouette.get("best_iou"), "reliable": silhouette.get("reliable"),
                        "unreliable_reasons": silhouette.get("unreliable_reasons", []), "advisory": True} if silhouette else None,
+        "registered": {key: value for key, value in (report.get("registered") or {}).items() if key in ("silhouette_iou", "color_regions")} or None,
     }
 
 
@@ -554,6 +555,8 @@ def promote(args: argparse.Namespace) -> None:
     }
     if "silhouette_overlay" in stages["geometry"]["outputs"]:
         files["silhouette.png"] = verified_run_artifact(root, stages["geometry"], "silhouette_overlay")
+    if "registered_overlay" in stages["geometry"]["outputs"]:
+        files["registered.png"] = verified_run_artifact(root, stages["geometry"], "registered_overlay")
     history = []
     for item in state["revisions"]:
         item_stages = item["stages"]
@@ -579,6 +582,7 @@ def promote(args: argparse.Namespace) -> None:
         "geometry": {key: inspection[key] for key in ("brep_valid", "solid_count", "dimensions", "volume", "cylindrical_features", "units") if key in inspection},
         "dimension_checks": stages["dimensions"].get("checks", []) if stages["dimensions"]["status"] == "passed" else stages["dimensions"]["status"],
         "silhouette": report.get("silhouette"),
+        "registered": {key: value for key, value in (report.get("registered") or {}).items() if key in ("frame", "subject", "silhouette_iou", "color_regions")} or None,
         "visual_review": {"verdict": "acceptable", "reviewer": stages["visual_review"]["reviewer"]},
         "human_acceptance": state["human_acceptance"],
         "file_sha256": {name: sha256(path) for name, path in files.items()},

@@ -130,6 +130,10 @@ Set up the CAD environment once with `python3 -m venv .venv-cad && .venv-cad/bin
 - [`skills/img2cad/MODELING.md`](skills/img2cad/MODELING.md): the allowed build123d API, plane orientation, technique-by-object-type table, how to read sizes from images, and the declarable checks.
 - [`examples/`](examples/README.md): accepted end-to-end runs (dimensioned plate, revolved bushing, revolved and shelled vase, lofted fish with a revise round, jointed standing horse, tiered pagoda), each with reference, observations, plan, model, comparison, silhouette overlay, review, and a short write-up.
 - [`skills/img2cad/LESSONS.md`](skills/img2cad/LESSONS.md): verified pitfalls from real runs.
+- Precision tools:
+  - `scripts/trace_regions.py` traces colour regions of the photo into pixel outlines.
+  - `scripts/img2cad_lib.py`, importable from `model.py`, provides `ImageFrame` registration, `projected_decal` for exact painted details on curved surfaces, and helpers for revolves, limbs, and joints.
+  - With `IMAGE_FRAME` set, runs draw the CAD on the photo (`registered.png`) and score each colour region against it.
 
 `promote` copies an accepted workflow into `examples/` so later agents can reuse it; new pitfalls go into `LESSONS.md`. This is how the repository accumulates experience across runs; agents do not otherwise remember earlier sessions.
 

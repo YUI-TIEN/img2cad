@@ -92,5 +92,40 @@ class ExampleLibraryTests(unittest.TestCase):
             self.assertIn("floating): stray", floating.stderr)
 
 
+    @unittest.skipUnless(os.environ.get("IMG2CAD_CAD_PYTHON"), "set IMG2CAD_CAD_PYTHON to run the CAD gate")
+    def test_projected_decal_and_registered_overlay_line_up_with_the_image(self) -> None:
+        from PIL import Image, ImageDraw
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            # 400x400 image, 1 px = 1 mm, model origin at pixel (200, 300):
+            # a white disc of radius 100 centred at model z = 100 with a black spot.
+            image = Image.new("RGB", (400, 400), (90, 110, 140))
+            draw = ImageDraw.Draw(image)
+            draw.ellipse((100, 100, 300, 300), fill=(245, 245, 242))
+            draw.ellipse((160, 150, 200, 190), fill=(20, 20, 20))
+            image.save(root / "reference.png")
+            model = root / "model.py"
+            model.write_text(
+                "from build123d import *\n"
+                "from img2cad_lib import ImageFrame, projected_decal\n\n"
+                "IMAGE_FRAME = ImageFrame(mm_per_px=1, origin_px=(200, 300))\n"
+                "SPOT = [(160 + 20 + 20 * __import__('math').cos(a / 10), 170 + 20 * __import__('math').sin(a / 10)) for a in range(63)]\n\n"
+                "def build_model():\n"
+                "    head = Pos(0, 0, 100) * Sphere(100)\n"
+                "    head.color, head.label = Color(0.96, 0.96, 0.95), 'head'\n"
+                "    spot = projected_decal(head, SPOT, IMAGE_FRAME, 2)\n"
+                "    spot.color, spot.label = Color(0.08, 0.08, 0.08), 'spot'\n"
+                "    return Compound(children=[head, spot])\n", encoding="utf-8")
+            result = subprocess.run([os.environ["IMG2CAD_CAD_PYTHON"], "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(root / "run"),
+                                     "--reference", str(root / "reference.png"), "--cad-python", os.environ["IMG2CAD_CAD_PYTHON"]],
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads((root / "run/run_report.json").read_text(encoding="utf-8"))
+            self.assertTrue((root / "run/registered.png").is_file())
+            regions = report["registered"]["color_regions"]
+            self.assertGreater(regions["#141414"]["iou"], 0.85, regions)
+            self.assertGreater(regions["#f5f5f2"]["iou"], 0.95, regions)
+
+
 if __name__ == "__main__":
     unittest.main()

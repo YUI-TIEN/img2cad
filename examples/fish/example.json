@@ -1,16 +1,17 @@
 {
   "dimension_checks": "not_applicable",
   "file_sha256": {
-    "comparison.png": "c422967309bcbdbe86835b7710f048d47df08b4b38323b35f7dcd24340a7e04b",
+    "comparison.png": "65f7e1853153177274afeec2e0537ca598278ca6965b33ac8cb59d77fd724794",
     "history/r001/comparison.png": "55cb5db210f01e82489652c0a0064cab58e02f192e0803768afd12bb6a2b7e06",
     "history/r001/model.py": "59782e64a1c457295e40bac20b33b1d7b80d869911ac456ae03795ca16d5ac37",
-    "history/r001/visual_review.json": "f091ffabb421507d3280c2719508b605cac1064665b8b03ad9a10b4041808721",
-    "model.py": "e17983bef89d0780e0d2d92ef65c18d51b44754942af1c05e29598560ba778d0",
+    "history/r001/visual_review.json": "084092ed1becc3e42a337802aed3664c3dda1d20a553e88fc8cf2d3245bb2c20",
+    "model.py": "ce2f4241e4c95362c800e14c7b3359e9d4642da05c51572e02d1e50eeb1ff8cc",
     "observations.json": "9813efb01a2dd777abb3a447ae20b89d670ba5a3a747cc9c9c98e02b251c68d6",
-    "plan.json": "8ad25c27e4b5163c64295c47ed46188089f71d6ec42c31ef85b79b846a3dc2ee",
+    "plan.json": "755555075d8d5f1f1fc736cb15d43218898307c91d32a958ed96e8fe1d64842b",
     "reference.png": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
+    "registered.png": "c9ac07b49facc83c8a7345faf9fb2d86c813ec654a1cd2a814c59486e98bcfe2",
     "silhouette.png": "5580a66406e6eddbc52d873de6ce0b851a27acac10b79f1aa902766c1c0406fa",
-    "visual_review.json": "d5e074c6fd370c07d9146d24ace11e925c8663243c8b0b618849bca8d9ba61b6"
+    "visual_review.json": "a590d51dae7949859ef6f5496d2e03c845de65865f005dc13e83efeb7be344e0"
   },
   "final_revision": "r002",
   "geometry": {
@@ -18,16 +19,55 @@
     "cylindrical_features": [],
     "dimensions": {
       "x": 220.00000010000002,
-      "y": 40.199999999999996,
+      "y": 36.132138211581314,
       "z": 100.19970147908876
     },
     "solid_count": 9,
     "units": "model units (img2cad convention: mm)",
-    "volume": 285214.7979165742
+    "volume": 282930.85548714787
   },
   "human_acceptance": "not_verified",
   "name": "fish",
   "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
+  "registered": {
+    "color_regions": {
+      "#1e1e1e": {
+        "cad_px": 185,
+        "iou": 0.8371,
+        "photo_px": 221
+      },
+      "#d66c2c": {
+        "cad_px": 1051,
+        "iou": 0.9589,
+        "photo_px": 1096
+      },
+      "#e27834": {
+        "cad_px": 12811,
+        "iou": 0.9064,
+        "photo_px": 12247
+      },
+      "#f08c3c": {
+        "cad_px": 69965,
+        "iou": 0.9444,
+        "photo_px": 68978
+      },
+      "#ffffff": {
+        "cad_px": 556,
+        "iou": 0.922,
+        "photo_px": 528
+      }
+    },
+    "frame": {
+      "mm_per_px": 0.4,
+      "origin_px": [
+        375,
+        260
+      ],
+      "view": "front (camera on -Y)"
+    },
+    "silhouette_iou": 0.9475,
+    "subject": "automatic segmentation"
+  },
   "revisions": [
     {
       "dimensions": "not_applicable",
@@ -65,15 +105,15 @@
         "mirrored": false
       },
       "Isometric \u00b7 from +X -Y +Z": {
-        "iou": 0.3917,
+        "iou": 0.3899,
         "mirrored": true
       },
       "Right \u00b7 from +X (Y right, Z up)": {
-        "iou": 0.3475,
+        "iou": 0.3427,
         "mirrored": false
       },
       "Top \u00b7 from +Z (X right, Y up)": {
-        "iou": 0.3867,
+        "iou": 0.3826,
         "mirrored": false
       }
     }
@@ -82,7 +122,9 @@
   "techniques": [
     "loft through Ellipse sections on Plane.YZ.offset(x)",
     "thin fins: Polygon on Plane.XZ + extrude(both=True)",
-    "coloured assembly: per-part Color in Compound(children=[...]), colours sampled from the image",
+    "IMAGE_FRAME registration + registered overlay with per-colour IoU",
+    "paint traced with trace_regions.py and projected with img2cad_lib.projected_decal, mirrored to the hidden side",
+    "coloured assembly: per-part Color in Compound(children=[...])",
     "revise loop: r001 missing features -> r002"
   ],
   "visual_review": {

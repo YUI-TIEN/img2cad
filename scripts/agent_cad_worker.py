@@ -153,6 +153,9 @@ def run_model(source_path: Path, output_dir: Path, strict: bool = False) -> dict
     namespace: dict[str, Any] = {"__name__": "img2cad_model", "__file__": str(source_path)}
     if strict:
         namespace["__builtins__"] = restricted_builtins()
+    else:
+        # Let models import the shared helpers (img2cad_lib) next to this script.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
     exec(compile(tree, str(source_path), "exec"), namespace, namespace)
     result = namespace["build_model"]()
     if not isinstance(result, Shape):
@@ -161,6 +164,11 @@ def run_model(source_path: Path, output_dir: Path, strict: bool = False) -> dict
         raise ValueError("build_model() returned no solids")
     step_path = output_dir / "model.step"
     export_step(result, str(step_path))
+    frame = namespace.get("IMAGE_FRAME")
+    if frame is not None:
+        # Registration of image pixels to model mm, used for the photo overlay.
+        frame_data = frame.as_dict() if hasattr(frame, "as_dict") else dict(frame)
+        (output_dir / "frame.json").write_text(json.dumps(frame_data, indent=2) + "\n", encoding="utf-8")
     return {"step": str(step_path), "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(), "policy": "strict" if strict else "open"}
 
 

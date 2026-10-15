@@ -29,6 +29,13 @@ Short, verified pitfalls collected from real runs. Read before modeling; add to 
 - **A part that only connects through another part is two solids.** The fish's tail and dorsal fin as one part reported "part 'tail_and_dorsal_fin' has 2 solids"; they meet only through the body. Make them separate parts. *(examples/fish)*
 - **Stack paint by lifting it.** Eye highlights on eyes and stripes on blush were lifted a little further off the surface than the layer under them, so they show on top. *(photo test: character statue)*
 
+## Precision
+
+- **Trace paint; don't hand-place it.** On the statue photo, paint drawn as hand-placed raised ellipsoids overlapped the photo's black regions at 0.45 and pink at 0.44. Outlines traced with `trace_regions.py` and projected with `projected_decal` reached 0.84 and 0.82, with the white body at 0.95. Arc brows, crescent eye highlights, the ω mouth, and slanted stripes all came out right. *(photo test: character statue, registered overlay)*
+- **`offset()` fails on any shape placed with `Pos`.** Even `offset(Pos(-4, 0, 0) * Sphere(100), 3)` raised "offset Error"; offsetting at the identity location and placing the result back worked. *(photo test: character statue, reproduced in isolation)*
+- **Compare colours with a shading-tolerant distance.** Nearest-colour by raw RGB put a white statue's shaded side into "pink" (pink IoU 0.05). Down-weighting brightness against hue fixed it (0.44, with the same model). For tracing, add a darker "shade" palette entry for the main colour. *(photo test: character statue)*
+- **Register the image** with `IMAGE_FRAME` so the overlay shows exactly where the CAD sits on the photo; normalised silhouette scores hide scale and position errors. *(photo test: character statue)*
+
 ## Reading the image
 
 - **On real photos the automatic silhouette is usually unusable**: grass, trees, and backgrounds coloured like the subject (an orange cat on beige and wood) break the segmentation. The run now reports `reliable: false` with reasons; trace a polygon mask and pass `--reference-mask`. *(blind tests: dog, cat, castle)*

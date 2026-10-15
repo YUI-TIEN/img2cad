@@ -2,10 +2,10 @@
   "target_type": "visual_approximation",
   "goal": "Recognizable fish with an organic lofted body and thin fins",
   "geometry_plan": [
-    "assume 1 px ~ 0.4 mm so the body is 180 mm long",
+    "register the image: IMAGE_FRAME = ImageFrame(0.4 mm/px, origin pixel (375, 260) = body centre); camera on -Y",
     "loft elliptical sections on Plane.YZ.offset(x) along X; half-heights from the silhouette, half-widths estimated at about 45% of half-height",
-    "tail and dorsal fin: polygons on Plane.XZ extruded symmetrically 2 mm thick",
-    "pectoral fin and eye from the image as separate features",
+    "tail and dorsal fin: polygons on Plane.XZ extruded symmetrically 2 mm thick, each its own part",
+    "trace the eye white, pupil and darker pectoral fin with scripts/trace_regions.py and project them onto the body with img2cad_lib.projected_decal; mirror them to the hidden side",
     "colour each part with the colour sampled from the image and return Compound(children=[...]) so the STEP keeps the colours"
   ],
   "constraints": [],
