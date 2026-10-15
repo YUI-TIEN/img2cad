@@ -4,12 +4,15 @@
 This is a coarse, scale- and position-normalized overlap score, not a visual
 acceptance gate. The reference foreground is estimated by growing the
 background inward from the image border, so it works for illustrations and
-product shots on plain or smoothly varying backgrounds and degrades on busy
-photographs; the result reports when the estimate looks unreliable.
+product shots on plain or smoothly varying backgrounds and fails on busy
+photographs or objects coloured like their background. ``reliable`` is false
+when the estimated foreground does not look like one object (several blobs,
+speckle, touching the border); pass a hand-made mask for such photos.
 """
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -20,11 +23,19 @@ from PIL import Image
 WORK_SIZE = 256
 NORMALIZED_SIZE = 160
 NEIGHBOR_TOLERANCE = 14
+MIN_LARGEST_COMPONENT_SHARE = 0.85
+MAX_BORDER_FOREGROUND = 0.10
+# Boundary pixels / sqrt(area). Clean outlines of the example illustrations
+# (including a legged horse) score 4.6-8.8; speckled photo segmentations and
+# line drawings score 11.6 and up.
+MAX_BOUNDARY_ROUGHNESS = 10.0
 
 
 def reference_foreground(path: Path) -> np.ndarray:
     image = Image.open(path).convert("RGB")
-    image.thumbnail((WORK_SIZE, WORK_SIZE), Image.Resampling.BILINEAR)
+    # Nearest-neighbour keeps edges hard: averaged edge pixels would form a
+    # colour ramp that lets the background grow into a low-contrast object.
+    image.thumbnail((WORK_SIZE, WORK_SIZE), Image.Resampling.NEAREST)
     pixels = np.asarray(image, dtype=np.int16)
     height, width = pixels.shape[:2]
     background = np.zeros((height, width), dtype=bool)
@@ -52,7 +63,86 @@ def reference_foreground(path: Path) -> np.ndarray:
         if np.array_equal(grown, background):
             break
         background = grown
-    return ~background
+    return ~(background | enclosed_background(pixels, background))
+
+
+def enclosed_background(pixels: np.ndarray, background: np.ndarray) -> np.ndarray:
+    """Pixels cut off from the border (e.g. sky between legs) that match a common background colour."""
+    if not background.any():
+        return np.zeros(background.shape, dtype=bool)
+    bins = pixels[background] // 8
+    keys, counts = np.unique(bins[:, 0] * 1024 + bins[:, 1] * 32 + bins[:, 2], return_counts=True)
+    frequent = keys[counts >= 0.01 * counts.sum()]
+    centres = np.stack([frequent // 1024, (frequent // 32) % 32, frequent % 32], axis=1) * 8 + 4
+    candidates = ~background
+    distance = np.full(background.shape, np.inf)
+    for centre in centres:
+        distance = np.minimum(distance, np.abs(pixels - centre).max(axis=2))
+    return candidates & (distance <= NEIGHBOR_TOLERANCE)
+
+
+def provided_mask(path: Path, reference: Path) -> np.ndarray:
+    mask_image = Image.open(path).convert("L")
+    reference_size = Image.open(reference).size
+    if mask_image.size != reference_size:
+        raise ValueError(f"reference mask is {mask_image.size[0]}x{mask_image.size[1]}, reference image is {reference_size[0]}x{reference_size[1]}")
+    mask_image.thumbnail((WORK_SIZE, WORK_SIZE), Image.Resampling.NEAREST)
+    return np.asarray(mask_image) > 127
+
+
+def component_sizes(mask: np.ndarray) -> list[int]:
+    """Sizes of 4-connected foreground components, largest first."""
+    seen = np.zeros(mask.shape, dtype=bool)
+    height, width = mask.shape
+    sizes = []
+    for start_y, start_x in zip(*np.nonzero(mask)):
+        if seen[start_y, start_x]:
+            continue
+        seen[start_y, start_x] = True
+        queue = deque([(start_y, start_x)])
+        size = 0
+        while queue:
+            y, x = queue.popleft()
+            size += 1
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < height and 0 <= nx < width and mask[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    queue.append((ny, nx))
+        sizes.append(size)
+    return sorted(sizes, reverse=True)
+
+
+def segmentation_quality(foreground: np.ndarray) -> dict[str, Any]:
+    fraction = float(foreground.mean())
+    sizes = component_sizes(foreground)
+    largest_share = sizes[0] / sum(sizes) if sizes else 0.0
+    # The outermost pixels seed the background, so look at a thin band just inside them.
+    band = 3
+    border = np.concatenate([foreground[1:band + 1, :].ravel(), foreground[-band - 1:-1, :].ravel(),
+                             foreground[:, 1:band + 1].ravel(), foreground[:, -band - 1:-1].ravel()])
+    border_fraction = float(border.mean())
+    padded = np.pad(foreground, 1)
+    interior = padded[1:-1, 1:-1] & padded[:-2, 1:-1] & padded[2:, 1:-1] & padded[1:-1, :-2] & padded[1:-1, 2:]
+    area = int(foreground.sum())
+    roughness = float((foreground & ~interior).sum() / np.sqrt(area)) if area else 0.0
+    reasons = []
+    if not 0.02 <= fraction <= 0.85:
+        reasons.append(f"foreground covers {fraction:.1%} of the image (expected 2-85%)")
+    if largest_share < MIN_LARGEST_COMPONENT_SHARE:
+        reasons.append(f"foreground is fragmented: largest blob is {largest_share:.0%} of it across {len(sizes)} blobs")
+    if roughness > MAX_BOUNDARY_ROUGHNESS:
+        reasons.append(f"outline is speckled or full of holes (boundary roughness {roughness:.1f}, expected <= {MAX_BOUNDARY_ROUGHNESS:g})")
+    if border_fraction > MAX_BORDER_FOREGROUND:
+        reasons.append(f"foreground touches {border_fraction:.0%} of the image border (background not separated)")
+    return {
+        "reference_foreground_fraction": round(fraction, 4),
+        "largest_component_share": round(largest_share, 4),
+        "component_count": len(sizes),
+        "border_foreground_fraction": round(border_fraction, 4),
+        "boundary_roughness": round(roughness, 2),
+        "reliable": not reasons,
+        "unreliable_reasons": reasons,
+    }
 
 
 def normalize(mask: np.ndarray) -> np.ndarray | None:
@@ -75,15 +165,23 @@ def iou(first: np.ndarray, second: np.ndarray) -> float:
     return float(np.logical_and(first, second).sum() / union) if union else 0.0
 
 
-def compare(reference: Path, view_masks: dict[str, np.ndarray], overlay_path: Path) -> dict[str, Any]:
-    foreground = reference_foreground(reference)
-    fraction = float(foreground.mean())
+def compare(reference: Path, view_masks: dict[str, np.ndarray], overlay_path: Path, mask_path: Path | None = None) -> dict[str, Any]:
+    if mask_path is not None:
+        foreground = provided_mask(mask_path, reference)
+        method = "provided reference mask"
+    else:
+        foreground = reference_foreground(reference)
+        method = "border-grown background segmentation"
+    quality = segmentation_quality(foreground)
+    if mask_path is not None:
+        # A hand-made mask is trusted as the outline; only an empty or full mask is rejected.
+        quality["unreliable_reasons"] = [reason for reason in quality["unreliable_reasons"] if reason.startswith("foreground covers")]
+        quality["reliable"] = not quality["unreliable_reasons"]
     reference_mask = normalize(foreground)
     result: dict[str, Any] = {
         "advisory": True,
-        "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
-        "reference_foreground_fraction": round(fraction, 4),
-        "reliable": 0.02 <= fraction <= 0.85,
+        "method": f"{method}; bounding-box normalized IoU; best of direct and mirrored",
+        **quality,
         "views": {},
     }
     if reference_mask is None:

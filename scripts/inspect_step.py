@@ -70,6 +70,14 @@ def inspect_step(path: Path) -> dict[str, Any]:
     }
     valid = bool(shape.is_valid)
     solid_volumes = [float(solid.volume) for solid in solids]
+    solid_summaries = []
+    for solid in solids:
+        solid_box = solid.bounding_box()
+        solid_summaries.append({
+            "volume": float(solid.volume),
+            "center": [round(float(value), 3) for value in (solid_box.center().X, solid_box.center().Y, solid_box.center().Z)],
+            "size": [round(float(value), 3) for value in (solid_box.size.X, solid_box.size.Y, solid_box.size.Z)],
+        })
     return {
         "file": str(path),
         "status": "passed" if valid and solids and all(volume > 0 for volume in solid_volumes) else "failed",
@@ -78,6 +86,7 @@ def inspect_step(path: Path) -> dict[str, Any]:
         "dimensions": dimensions,
         "volume": float(shape.volume),
         "solid_volumes": solid_volumes,
+        "solids": solid_summaries,
         "cylindrical_features": cylindrical_features(shape),
         "units": "model units (img2cad convention: mm)",
     }

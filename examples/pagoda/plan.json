@@ -1,0 +1,17 @@
+{
+  "target_type": "visual_approximation",
+  "goal": "Recognizable three-tier pagoda as one solid with stepped hipped roofs",
+  "geometry_plan": [
+    "assume 1 px = 25 mm; map image (px, py) to x = (px - 320) * 25, z = (740 - py) * 25; square plan",
+    "base: ruled loft between two squares (battered stone base)",
+    "each storey: Box wall that starts slightly below the roof top under it so tiers fuse",
+    "each roof: ruled loft through three squares (eave underside, flared eave edge, small top square)",
+    "finial: Cylinder plus Cone tip; windows are surface detail and are not modelled"
+  ],
+  "constraints": [],
+  "unknowns": [
+    "depth assumed equal to width",
+    "scale assumed",
+    "roof curves simplified to straight hips"
+  ]
+}

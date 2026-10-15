@@ -15,9 +15,9 @@
   "previous": null,
   "reference_sha256": "c8779c2b841586fc43e432223fac215fc40a4d39b684d4c2231f2daad5e6285e",
   "reviewer": "agent",
-  "run_report_sha256": "f5d547eebdb6c6586eaa719a83b003a2ac35fc6d88de74892ec406fdcf2726f1",
+  "run_report_sha256": "49870510f61bb0c8f3e5229152b5f43ae23386cd4ef3e22245ed8c1a855f3850",
   "schema_version": 1,
-  "source_view": "Drawing top view compared with CAD Top X/Y panel; drawing side view compared with CAD Side X/Z panel",
+  "source_view": "Drawing top view compared with CAD Top panel; drawing side view compared with CAD Front (from -Y) panel",
   "verdict": "acceptable",
   "visual_status": "recorded_not_independently_verified"
 }

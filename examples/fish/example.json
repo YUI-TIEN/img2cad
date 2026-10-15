@@ -1,16 +1,16 @@
 {
   "dimension_checks": "not_applicable",
   "file_sha256": {
-    "comparison.png": "a17eccd19e80f0011fb863b9759dab5f5897c47cd8c96cf9b44d63e69075436c",
-    "history/r001/comparison.png": "131d0fdbf81765de9e411b15ec31102a41d3cd585e61c6e2b6e2cc37b567c7a1",
+    "comparison.png": "fb81e2b9e913725170463894a484325a585b7751025ca9906f23ef836a985b38",
+    "history/r001/comparison.png": "cd89799a85b14991265e43f27b2880b0ce8b67ccf82da67813e0678a6203575f",
     "history/r001/model.py": "59782e64a1c457295e40bac20b33b1d7b80d869911ac456ae03795ca16d5ac37",
-    "history/r001/visual_review.json": "714524726e3c106d5ea3dd4964ceeab65a633437c21d7cd6792224d23bb9bd25",
+    "history/r001/visual_review.json": "d95ad9f0f40156632e4358aaa1a608df13e7e0b9a6b92acf785d7b5cb060aeb4",
     "model.py": "b5cea8b1bbe119afb09b4b5d03376e28619132b56616e627ae2b74fb45594b1c",
     "observations.json": "9813efb01a2dd777abb3a447ae20b89d670ba5a3a747cc9c9c98e02b251c68d6",
     "plan.json": "fd87ec702ba37f46325087214c0d118a57106a0da2ac5c323788febab7e14834",
     "reference.png": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
-    "silhouette.png": "2d52a36133bbbd3d2a62041c63c50d149206ea7821bb99312d4705df1ee59260",
-    "visual_review.json": "6850d801ea7d96bddace027bea348c5b69763c7446f3ec82f2a9beecc35088ee"
+    "silhouette.png": "b165f2941baa7daf1414d2d842c45c9c6d854b864f720d288fdb3c55307c5080",
+    "visual_review.json": "f0d98134271d8b931000b08f81886045770b9f49500f125f0624ab58c9b636cb"
   },
   "final_revision": "r002",
   "geometry": {
@@ -48,27 +48,32 @@
   "schema_version": 1,
   "silhouette": {
     "advisory": true,
-    "best_iou": 0.9513,
-    "best_view": "Side \u00b7 X/Z",
+    "best_iou": 0.9438,
+    "best_view": "Front \u00b7 from -Y (X right, Z up)",
+    "border_foreground_fraction": 0.0,
+    "boundary_roughness": 4.61,
+    "component_count": 1,
+    "largest_component_share": 1.0,
     "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
     "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
-    "reference_foreground_fraction": 0.2072,
+    "reference_foreground_fraction": 0.2009,
     "reliable": true,
+    "unreliable_reasons": [],
     "views": {
-      "Front \u00b7 Y/Z": {
-        "iou": 0.3405,
+      "Front \u00b7 from -Y (X right, Z up)": {
+        "iou": 0.9438,
         "mirrored": false
       },
-      "Isometric": {
-        "iou": 0.3947,
+      "Isometric \u00b7 from +X -Y +Z": {
+        "iou": 0.3921,
         "mirrored": true
       },
-      "Side \u00b7 X/Z": {
-        "iou": 0.9513,
+      "Right \u00b7 from +X (Y right, Z up)": {
+        "iou": 0.3392,
         "mirrored": false
       },
-      "Top \u00b7 X/Y": {
-        "iou": 0.3775,
+      "Top \u00b7 from +Z (X right, Y up)": {
+        "iou": 0.3827,
         "mirrored": false
       }
     }

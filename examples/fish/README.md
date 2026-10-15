@@ -24,5 +24,5 @@ extrude(amount=FIN_THICKNESS / 2, both=True)
 - `Plane.YZ.offset(x)` moves along +X, so sections can be listed by x position. In `Ellipse(a, b)` on `Plane.YZ`, `a` is the Y (thickness) radius and `b` is the Z (height) radius.
 - The nose and tail ends are small ellipses (a few mm), so the loft closes into a rounded tip.
 - `Plane.XZ` faces −Y: `Plane.XZ.offset(d)` sits at y = −d, and a positive `extrude` goes toward −Y. The pectoral fins use the side sign to extrude outward on each side.
-- Features inside the silhouette (eye, pectoral fin) do not change the silhouette score at all (0.951 before and after). Compare the comparison image by eye, too.
+- Features inside the silhouette (eye, pectoral fin) barely change the silhouette score (0.9437 before, 0.9438 after). Compare the comparison image by eye, too.
 - The faceted shading is preview tessellation, not the B-rep.

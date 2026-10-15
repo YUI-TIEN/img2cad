@@ -15,9 +15,9 @@
   "previous": null,
   "reference_sha256": "4768b99fcdede546fe2b278dda761598f5b26dd38b4b527ec300bbcdf6e1a65b",
   "reviewer": "agent",
-  "run_report_sha256": "f227424910257671a78c077f71459151e4ce094203c301af2bc6a4eecf9e720f",
+  "run_report_sha256": "284ad566479b1ca7767cfdba67e7a4efd6013095183ea6adf759fb310731b61b",
   "schema_version": 1,
-  "source_view": "Illustration front view compared with CAD Front Y/Z and Side X/Z panels (both orthographic, so camera alignment is close)",
+  "source_view": "Illustration front view compared with CAD Front (from -Y) and Right (from +X) panels (both orthographic, so camera alignment is close)",
   "verdict": "acceptable",
   "visual_status": "recorded_not_independently_verified"
 }

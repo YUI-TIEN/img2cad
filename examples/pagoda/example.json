@@ -1,0 +1,98 @@
+{
+  "dimension_checks": "not_applicable",
+  "file_sha256": {
+    "comparison.png": "80548bc756285399feb14b705e11b8bb7a28b2089ba7c893bec2d0f42d01f6d1",
+    "model.py": "2c6ce73605e521d61e1c0aea78003017fc420460cf53397148acd0ff7e700bb4",
+    "observations.json": "b583fca968708a1cb38cd3571b0f1a8532d77c7c9f90dba5cd31ad9dfebe05a5",
+    "plan.json": "cf7d4aa895a5587f5a3a0ca9eee13c0a3f0938a53226033245d6c5a309185183",
+    "reference.png": "3e201b1bc368c1c0a68741808edaa7ba65a835a592b7e0106bd3bea70bf00663",
+    "silhouette.png": "c205ccc6798c609cfb850376262652ef1a0f8af206616cbce2ea05ca495c614b",
+    "visual_review.json": "5e506edfa0ac87278aa4f745bb11097b4f4a71973fa4fa014377f2c8dfe4afec"
+  },
+  "final_revision": "r001",
+  "geometry": {
+    "brep_valid": true,
+    "cylindrical_features": [
+      {
+        "axis_direction": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "axis_point": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "diameter": 300.0,
+        "faces": 1,
+        "full": true,
+        "kind": "boss",
+        "sweep": 1.0
+      }
+    ],
+    "dimensions": {
+      "x": 9250.0000002,
+      "y": 9250.0000002,
+      "z": 12875.0000001
+    },
+    "solid_count": 1,
+    "units": "model units (img2cad convention: mm)",
+    "volume": 364559817766.39417
+  },
+  "human_acceptance": "not_verified",
+  "name": "pagoda",
+  "reference_sha256": "3e201b1bc368c1c0a68741808edaa7ba65a835a592b7e0106bd3bea70bf00663",
+  "revisions": [
+    {
+      "dimensions": "not_applicable",
+      "geometry": "passed",
+      "id": "r001",
+      "reason": null,
+      "visual_review": "acceptable"
+    }
+  ],
+  "schema_version": 1,
+  "silhouette": {
+    "advisory": true,
+    "best_iou": 0.9817,
+    "best_view": "Front \u00b7 from -Y (X right, Z up)",
+    "border_foreground_fraction": 0.0,
+    "boundary_roughness": 7.13,
+    "component_count": 1,
+    "largest_component_share": 1.0,
+    "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
+    "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
+    "reference_foreground_fraction": 0.1799,
+    "reliable": true,
+    "unreliable_reasons": [],
+    "views": {
+      "Front \u00b7 from -Y (X right, Z up)": {
+        "iou": 0.9817,
+        "mirrored": false
+      },
+      "Isometric \u00b7 from +X -Y +Z": {
+        "iou": 0.5141,
+        "mirrored": false
+      },
+      "Right \u00b7 from +X (Y right, Z up)": {
+        "iou": 0.9815,
+        "mirrored": false
+      },
+      "Top \u00b7 from +Z (X right, Y up)": {
+        "iou": 0.3598,
+        "mirrored": false
+      }
+    }
+  },
+  "target_type": "visual_approximation",
+  "techniques": [
+    "three-section ruled loft for hipped roofs with flared eaves",
+    "stacked tiers that overlap so they fuse into one solid",
+    "battered base as a ruled loft between squares"
+  ],
+  "visual_review": {
+    "reviewer": "agent",
+    "verdict": "acceptable"
+  }
+}

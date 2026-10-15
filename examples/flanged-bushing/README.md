@@ -21,4 +21,4 @@ with BuildPart() as bushing:
 - Start the profile at the bore radius, not at the axis. A profile that touches the axis revolves into a solid with no bore.
 - `Plane.XZ` maps sketch Y to global **Z** and faces −Y. Draw radius on sketch X and height on sketch Y.
 - The drawing's axis is horizontal but the model's axis is Z. Say so in the review; it is an orientation choice, not an error.
-- For line drawings the silhouette score is low (dimension text and lines count as foreground). Trust the dimension gate instead.
+- For line drawings the silhouette score is meaningless (only the lines and text are foreground) and is reported `reliable: false`. Trust the dimension gate instead.

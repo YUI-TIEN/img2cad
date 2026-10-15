@@ -21,7 +21,7 @@ with BuildPart() as vase:
 
 **Pitfalls:**
 
-- The first attempt guessed 6 radii by eye, and the neck came out too short and narrow. Measuring the silhouette at evenly spaced heights fixed it. Measure; don't eyeball.
+- The first attempt guessed 6 radii by eye, and the neck came out too short and narrow (silhouette 0.87). Measuring the silhouette at evenly spaced heights fixed it (0.92). Measure; don't eyeball.
 - Close the profile to the axis (`Line` segments to x = 0) so `make_face` gets a closed wire. The top disc this creates is then the face passed to `offset(..., openings=...)` to open the mouth.
 - `offset` with a negative amount hollows inward. A wall thinner than the tightest curvature radius can fail; 2.5 mm is safe at this size.
-- Front and Side panels are orthographic, so for a symmetric object they line up with the illustration closely (silhouette IoU ≈ 0.98).
+- The Front and Right panels are orthographic, so for a symmetric object they line up with the illustration closely. The score stays below 1 mainly because the drawn ground shadow under the foot counts as part of the object.

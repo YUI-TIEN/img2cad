@@ -1,13 +1,13 @@
 {
   "dimension_checks": "not_applicable",
   "file_sha256": {
-    "comparison.png": "c4deb1f8952e82f303d6108fa0fc5b200437814047de6344fc89138c79614c22",
+    "comparison.png": "005cb47ec1778204179322cfa5f9669c2b3a89aa655afb7118045b81157c6e94",
     "model.py": "f7a98acfea0e73e3837f7d55e07f21cd188a12f79b6495a17d110e1fb372f9c2",
     "observations.json": "5624ed68afbb026b8bf9144a8090b8e8b06dde99a753d83e61e78251d645266d",
     "plan.json": "c115485e60e8d649758faa72812d6ac94bc63b6e8e6e385ac6ccf23a6142cac0",
     "reference.png": "4768b99fcdede546fe2b278dda761598f5b26dd38b4b527ec300bbcdf6e1a65b",
-    "silhouette.png": "2265b8acee4799ce22702a298e135f66ce2c814a356631b1083575130467e365",
-    "visual_review.json": "f2c50e48c92bbb3d70f0cd1459b8068477dbced1d625c3bdd1c62b1e936b9d86"
+    "silhouette.png": "4f1455db1125c93c7e5f4566c6e4e43201100dcb319fa14d380dc379e273f82d",
+    "visual_review.json": "db12c57dad69493168c9e7b3abdefed4096dbffde3dcfc53a1b258567dd58933"
   },
   "final_revision": "r001",
   "geometry": {
@@ -37,27 +37,32 @@
   "schema_version": 1,
   "silhouette": {
     "advisory": true,
-    "best_iou": 0.9792,
-    "best_view": "Front \u00b7 Y/Z",
+    "best_iou": 0.9193,
+    "best_view": "Right \u00b7 from +X (Y right, Z up)",
+    "border_foreground_fraction": 0.0,
+    "boundary_roughness": 4.58,
+    "component_count": 1,
+    "largest_component_share": 1.0,
     "method": "border-grown background segmentation; bounding-box normalized IoU; best of direct and mirrored",
     "overlay_legend": "gray: both; red: reference only (CAD missing); blue: CAD only (extra)",
-    "reference_foreground_fraction": 0.1968,
+    "reference_foreground_fraction": 0.2047,
     "reliable": true,
+    "unreliable_reasons": [],
     "views": {
-      "Front \u00b7 Y/Z": {
-        "iou": 0.9792,
+      "Front \u00b7 from -Y (X right, Z up)": {
+        "iou": 0.9172,
         "mirrored": false
       },
-      "Isometric": {
-        "iou": 0.9203,
+      "Isometric \u00b7 from +X -Y +Z": {
+        "iou": 0.8673,
         "mirrored": false
       },
-      "Side \u00b7 X/Z": {
-        "iou": 0.9782,
+      "Right \u00b7 from +X (Y right, Z up)": {
+        "iou": 0.9193,
         "mirrored": false
       },
-      "Top \u00b7 X/Y": {
-        "iou": 0.4641,
+      "Top \u00b7 from +Z (X right, Y up)": {
+        "iou": 0.4434,
         "mirrored": false
       }
     }

@@ -1,0 +1,24 @@
+{
+  "assumptions": [
+    "square plan assumed",
+    "windows are surface detail, not geometry",
+    "roof curvature simplified to straight hips"
+  ],
+  "criteria": [],
+  "geometry_status": "passed",
+  "human_acceptance": "not_verified_by_runner",
+  "matches": [
+    "battered base, three narrowing storeys, three stepped hipped roofs with flared eaves, and the finial match the elevation",
+    "silhouette overlap is near-complete"
+  ],
+  "mismatches": [],
+  "next_changes": [],
+  "previous": null,
+  "reference_sha256": "3e201b1bc368c1c0a68741808edaa7ba65a835a592b7e0106bd3bea70bf00663",
+  "reviewer": "agent",
+  "run_report_sha256": "7f0544fa816b3a7563731737fc50110574d8197167d160a95ad4a81d97448a3f",
+  "schema_version": 1,
+  "source_view": "Front-elevation illustration compared with CAD Front (from -Y) panel; silhouette overlay checked",
+  "verdict": "acceptable",
+  "visual_status": "recorded_not_independently_verified"
+}

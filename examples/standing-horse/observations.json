@@ -1,0 +1,33 @@
+{
+  "observed": [
+    "side view of a standing horse, head to the left",
+    "oval barrel body",
+    "long neck rising forward to a head with a rounded muzzle and one pointed ear",
+    "four legs: near and far fore legs nearly straight; hind legs bent backward at the hock",
+    "dark hooves",
+    "tail hanging down and back from the rump",
+    "eye on the head"
+  ],
+  "inferred": [
+    "near-side legs are the lighter pair, far-side legs the darker pair behind them",
+    "a second ear and eye exist on the hidden side"
+  ],
+  "unknowns": [
+    "body width (not visible in a side view)",
+    "scale"
+  ],
+  "evidence": [
+    {
+      "claim": "barrel, neck, head, tail outline",
+      "source": "reference.png silhouette"
+    },
+    {
+      "claim": "hind hock bend",
+      "source": "reference.png near hind leg angles back at about 70% of its height"
+    },
+    {
+      "claim": "near/far legs",
+      "source": "reference.png lighter and darker leg pairs"
+    }
+  ]
+}

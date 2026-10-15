@@ -19,9 +19,9 @@
   "previous": null,
   "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
   "reviewer": "agent",
-  "run_report_sha256": "757326c238707c7fa4f708081e5d340c2ad998502b501d59e160f2b3202b0ded",
+  "run_report_sha256": "f48dfc60875c32f424801af8fece44a518604353633bbfa8d8ed2a2dd665d23d",
   "schema_version": 1,
-  "source_view": "Illustration side view compared with CAD Side X/Z panel",
+  "source_view": "Illustration side view compared with CAD Front (from -Y) panel",
   "verdict": "revise",
   "visual_status": "recorded_not_independently_verified"
 }
