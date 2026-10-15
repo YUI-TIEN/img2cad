@@ -64,6 +64,9 @@ Verified behaviour of build123d 0.13 (pinned in `requirements-cad.lock`):
 - **Ball joints between segments**: use a sphere a little larger than the limb, and turn its poles away from the limb axis, e.g. `Pos(p) * Rot(90, 0, 0) * Sphere(r)` for near-vertical legs. A default sphere (poles on Z) at the end of a vertical cone made `fuse` silently leave separate solids (`examples/standing-horse`).
 - **Stacked parts must overlap, not just touch.** Extend each part a little into its neighbour (`examples/pagoda` uses `WALL_OVERLAP`).
 - Fuse many parts with a loop: `part = part.fuse(piece)`. If the gate reports several solids, use `preview` and fuse step by step to find the piece that breaks it.
+- **Revolve seams**: `revolve` leaves a seam line in the sketch plane (the +X side for `Plane.XZ`). Before fusing parts onto a revolved body, rotate the body so the seam faces away from them, e.g. `Rot(0, 0, 90) * revolved` puts it at the back.
+- **Smooth rounded bodies from a measured outline** (heads, bottles, domes): run one `Spline` through the (radius, height) points, starting and ending on the axis with `tangents=((1, 0), (-1, 0))`, and `revolve` it. Avoid squashing the result with a non-uniform `scale` if you will fuse more parts onto it.
+- **Trimming**: `shape.intersect(other)` returns a `ShapeList`; to keep only part of a shape, `cut` away the rest (e.g. a big `Box` below the floor).
 
 ## Views and camera direction
 
