@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Execute a reviewed agent-authored build123d function and export STEP."""
+"""Execute a reviewed agent-authored build123d function and export STEP.
+
+By default the model source is ordinary Python with full access to build123d
+and the standard library; it runs in its own subprocess with a timeout, a
+minimal environment, and `-I` isolation, but it is NOT sandboxed. Read it
+before running it. `--strict` turns on the optional allowlist policy below for
+source you did not write or review yourself (it is a static check, not a
+security boundary).
+"""
 
 from __future__ import annotations
 
@@ -13,7 +21,8 @@ import sys
 from typing import Any
 
 
-# Keep this list in sync with skills/img2cad/MODELING.md (enforced by tests).
+# Strict mode only: the build123d names, math names, builtins, and methods a
+# model may use when the source comes from somewhere untrusted.
 ALLOWED_IMPORTS = {
     # Placement, enums, and selectors.
     "Align", "Axis", "GeomType", "Keep", "Location", "Locations", "GridLocations",
@@ -83,15 +92,23 @@ SAFE_NODES = {
 BLOCKED_NAMES = {"__builtins__", "__import__", "eval", "exec", "compile", "open", "input", "globals", "locals", "vars", "getattr", "setattr", "delattr"}
 
 
-def parse_model_source(source: str, label: str) -> tuple[ast.Module, set[str]]:
-    if len(source.encode("utf-8")) > 256_000:
-        raise ValueError("model source exceeds 256 KB")
+def parse_model_source(source: str, label: str, strict: bool = False) -> tuple[ast.Module, set[str]]:
+    """Check that the source parses and defines build_model(); apply the allowlist only when strict."""
+    if len(source.encode("utf-8")) > 1_000_000:
+        raise ValueError("model source exceeds 1 MB")
     tree = ast.parse(source, filename=label)
     nodes = list(ast.walk(tree))
+    functions = {node.name for node in nodes if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    if "build_model" not in functions:
+        raise ValueError("model source must define build_model()")
+    if strict:
+        check_strict_policy(nodes, functions)
+    return tree, functions
+
+
+def check_strict_policy(nodes: list[ast.AST], functions: set[str]) -> None:
     if len(nodes) > 12_000:
         raise ValueError("model source exceeds the syntax-node limit")
-    functions: set[str] = set()
-    functions = {node.name for node in nodes if isinstance(node, ast.FunctionDef)}
     for node in nodes:
         if type(node) not in SAFE_NODES:
             raise ValueError(f"unsupported source construct: {type(node).__name__}")
@@ -126,16 +143,28 @@ def parse_model_source(source: str, label: str) -> tuple[ast.Module, set[str]]:
                     raise ValueError(f"method call is not allowed: {node.func.attr}")
             else:
                 raise ValueError("indirect/dynamic calls are not allowed")
-    if "build_model" not in functions:
-        raise ValueError("model source must define build_model()")
-    return tree, functions
 
 
-def run_model(source_path: Path, output_dir: Path) -> dict[str, Any]:
+def run_model(source_path: Path, output_dir: Path, strict: bool = False) -> dict[str, Any]:
     from build123d import Shape, export_step
 
     source = source_path.read_text(encoding="utf-8")
-    tree, _functions = parse_model_source(source, str(source_path))
+    tree, _functions = parse_model_source(source, str(source_path), strict)
+    namespace: dict[str, Any] = {"__name__": "img2cad_model", "__file__": str(source_path)}
+    if strict:
+        namespace["__builtins__"] = restricted_builtins()
+    exec(compile(tree, str(source_path), "exec"), namespace, namespace)
+    result = namespace["build_model"]()
+    if not isinstance(result, Shape):
+        raise TypeError(f"build_model() must return a build123d Shape (a Part, Solid, or Compound assembly), got {type(result).__name__}")
+    if not result.solids():
+        raise ValueError("build_model() returned no solids")
+    step_path = output_dir / "model.step"
+    export_step(result, str(step_path))
+    return {"step": str(step_path), "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(), "policy": "strict" if strict else "open"}
+
+
+def restricted_builtins() -> dict[str, Any]:
     modules = {"build123d": (importlib.import_module("build123d"), ALLOWED_IMPORTS), "math": (importlib.import_module("math"), MATH_NAMES)}
 
     def restricted_import(name: str, globals: Any = None, locals: Any = None, fromlist: tuple[str, ...] | None = (), level: int = 0) -> Any:
@@ -146,28 +175,20 @@ def run_model(source_path: Path, output_dir: Path) -> dict[str, Any]:
             raise ImportError(f"model requested a non-allowlisted {name} symbol")
         return module
 
-    namespace: dict[str, Any] = {"__builtins__": {**SAFE_BUILTINS, "__import__": restricted_import}}
-    exec(compile(tree, str(source_path), "exec"), namespace, namespace)
-    result = namespace["build_model"]()
-    if not isinstance(result, Shape):
-        raise TypeError("build_model() must return a build123d Shape")
-    if not result.solids():
-        raise ValueError("build_model() returned no solids")
-    step_path = output_dir / "model.step"
-    export_step(result, str(step_path))
-    return {"step": str(step_path), "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest()}
+    return {**SAFE_BUILTINS, "__import__": restricted_import}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model_source", type=Path)
     parser.add_argument("output_dir", type=Path)
+    parser.add_argument("--strict", action="store_true", help="apply the allowlist policy (for untrusted source)")
     args = parser.parse_args()
     source_path = args.model_source.resolve()
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
-        result = run_model(source_path, output_dir)
+        result = run_model(source_path, output_dir, args.strict)
         print(json.dumps(result, indent=2))
         return 0
     except Exception as exc:

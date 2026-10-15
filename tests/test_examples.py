@@ -74,5 +74,23 @@ class ExampleLibraryTests(unittest.TestCase):
             self.assertEqual(allowed.returncode, 0, allowed.stderr)
 
 
+    @unittest.skipUnless(os.environ.get("IMG2CAD_CAD_PYTHON"), "set IMG2CAD_CAD_PYTHON to run the CAD gate")
+    def test_coloured_assembly_keeps_part_colours_and_rejects_floating_parts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            def build(source: str, name: str) -> subprocess.CompletedProcess:
+                model = Path(temp) / f"{name}.py"
+                model.write_text(source, encoding="utf-8")
+                return subprocess.run([os.environ["IMG2CAD_CAD_PYTHON"], "-B", str(ROOT / "scripts/run_agent_cad.py"), str(model), str(Path(temp) / name),
+                                       "--cad-python", os.environ["IMG2CAD_CAD_PYTHON"]], capture_output=True, text=True, check=False)
+            header = "from build123d import *\n\ndef build_model():\n    head = Sphere(100)\n    head.color, head.label = Color(1, 1, 1), 'head'\n"
+            touching = build(header + "    eye = Pos(-35, -95, 20) * Sphere(14)\n    eye.color, eye.label = Color(0, 0, 0), 'eye'\n    return Compound(children=[head, eye])\n", "touching")
+            self.assertEqual(touching.returncode, 0, touching.stderr)
+            parts = json.loads((Path(temp) / "touching/run_report.json").read_text(encoding="utf-8"))["inspection"]["parts"]
+            self.assertEqual([(part["label"], part["color"][:3]) for part in parts], [("head", [1.0, 1.0, 1.0]), ("eye", [0.0, 0.0, 0.0])])
+            floating = build(header + "    eye = Pos(0, -150, 20) * Sphere(10)\n    eye.label = 'stray'\n    return Compound(children=[head, eye])\n", "floating")
+            self.assertEqual(floating.returncode, 1)
+            self.assertIn("floating): stray", floating.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

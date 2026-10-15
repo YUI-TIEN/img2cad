@@ -302,11 +302,14 @@ def source_review(args: argparse.Namespace) -> None:
     if not source.is_file() or source.is_symlink():
         raise ValueError("model source must be an existing regular, non-symlink file")
     text = source.read_text(encoding="utf-8")
-    parse_model_source(text, str(source))
+    strict = bool(getattr(args, "strict_source", False))
+    parse_model_source(text, str(source), strict)
     revision_dir = root / revision["directory"]
     local = revision_dir / "model.py"
     shutil.copyfile(source, local)
-    stages["source_review"] = stage_record("passed", {"observations": stages["observations"]["outputs"]["observations"], "plan": stages["plan"]["outputs"]["plan"], "reference": state["reference"]["sha256"]}, {"model_source": sha256(local)}, model_path=local.name, inspection_note=args.inspection_note.strip(), policy="restricted AST/build123d API review passed; recorded inspection note is agent-authored, not independent review evidence")
+    stages["source_review"] = stage_record("passed", {"observations": stages["observations"]["outputs"]["observations"], "plan": stages["plan"]["outputs"]["plan"], "reference": state["reference"]["sha256"]}, {"model_source": sha256(local)}, model_path=local.name, inspection_note=args.inspection_note.strip(), source_policy="strict" if strict else "open",
+                                           policy=("allowlist check passed (strict)" if strict else "syntax and build_model() check only (open); the source runs as unrestricted Python")
+                                           + "; recorded inspection note is agent-authored, not independent review evidence")
     stages["geometry"] = {"status": "pending", "inputs": {}, "outputs": {}}
     stages["dimensions"] = {"status": "pending", "inputs": {}, "outputs": {}}
     stages["visual_review"] = {"status": "pending", "inputs": {}, "outputs": {}}
@@ -333,7 +336,7 @@ def run_geometry(args: argparse.Namespace) -> None:
     if sha256(root / state["reference"]["path"]) != state["reference"]["sha256"]:
         raise ValueError("reference image changed after workflow initialization")
     cad_dir = revision_dir / "cad"
-    command = runner_command(root, state, plan, model, cad_dir, args)
+    command = runner_command(root, state, plan, model, cad_dir, args, stages["source_review"].get("source_policy") == "strict")
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
     if result.returncode == 2:
         # argparse usage error: the model never ran, so do not spend the revision.
@@ -365,7 +368,7 @@ def run_geometry(args: argparse.Namespace) -> None:
                       "dimension_checks": checks if dimension_applicable else "not_applicable", "next": next_action(revision)}, indent=2))
 
 
-def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], model: Path, out_dir: Path, args: argparse.Namespace) -> list[str]:
+def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], model: Path, out_dir: Path, args: argparse.Namespace, strict: bool = False) -> list[str]:
     """Build the run_agent_cad.py command, validating local inputs first so a typo never counts as a CAD failure."""
     cad_python = Path(args.cad_python).expanduser()
     if not cad_python.is_absolute():
@@ -383,6 +386,8 @@ def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], mode
         command.extend(["--reference-mask", str(mask)])
     if plan.get("allow_multiple_solids"):
         command.append("--allow-multiple-solids")
+    if strict:
+        command.append("--strict")
     return command
 
 
@@ -392,7 +397,8 @@ def run_summary(cad_dir: Path, report: dict[str, Any]) -> dict[str, Any]:
     files = {key: str(cad_dir / report[key]["path"]) for key in ("comparison", "silhouette_overlay", "step", "preview") if key in report}
     return {
         "files": files,
-        "geometry": {"solid_count": inspection["solid_count"], "dimensions": inspection["dimensions"], "volume": inspection["volume"]},
+        "geometry": {"solid_count": inspection["solid_count"], "dimensions": inspection["dimensions"], "volume": inspection["volume"],
+                     "parts": [{"label": part["label"], "color": part["color"], "solid_count": part["solid_count"]} for part in inspection.get("parts", [])]},
         "silhouette": {"best_view": silhouette.get("best_view"), "best_iou": silhouette.get("best_iou"), "reliable": silhouette.get("reliable"),
                        "unreliable_reasons": silhouette.get("unreliable_reasons", []), "advisory": True} if silhouette else None,
     }
@@ -410,12 +416,12 @@ def preview(args: argparse.Namespace) -> None:
     model = args.model.expanduser().resolve()
     if not model.is_file() or model.is_symlink():
         raise ValueError("model source must be an existing regular, non-symlink file")
-    parse_model_source(model.read_text(encoding="utf-8"), str(model))
+    parse_model_source(model.read_text(encoding="utf-8"), str(model), args.strict_source)
     previews = root / "previews"
     previews.mkdir(exist_ok=True)
     number = len([path for path in previews.iterdir() if path.is_dir()]) + 1
     out_dir = previews / f"p{number:03d}"
-    result = subprocess.run(runner_command(root, state, plan, model, out_dir, args), cwd=ROOT, text=True, capture_output=True, check=False)
+    result = subprocess.run(runner_command(root, state, plan, model, out_dir, args, args.strict_source), cwd=ROOT, text=True, capture_output=True, check=False)
     if result.returncode:
         inspection_path = out_dir / "inspection.json"
         detail = {"preview": "failed", "directory": str(out_dir), "error": (result.stderr or result.stdout).strip()[-2000:]}
@@ -608,6 +614,7 @@ def main() -> int:
     source.add_argument("workflow", type=Path)
     source.add_argument("--model", type=Path, required=True)
     source.add_argument("--inspection-note", required=True, help="briefly state what was checked in the source and against the plan")
+    source.add_argument("--strict-source", action="store_true", help="enforce the allowlist policy (use for model source you did not write or review)")
     source.set_defaults(func=source_review)
     run = commands.add_parser("run", help="execute geometry/STEP gate and generate comparison")
     run.add_argument("workflow", type=Path)
@@ -618,6 +625,7 @@ def main() -> int:
     draft = commands.add_parser("preview", help="build a draft model and render the comparison without spending a revision")
     draft.add_argument("workflow", type=Path)
     draft.add_argument("--model", type=Path, required=True)
+    draft.add_argument("--strict-source", action="store_true", help="enforce the allowlist policy for this draft")
     draft.add_argument("--cad-python", default=".venv-cad/bin/python")
     draft.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z")
     draft.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object)")

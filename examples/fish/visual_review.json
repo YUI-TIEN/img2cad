@@ -7,14 +7,15 @@
   "geometry_status": "passed",
   "human_acceptance": "not_verified_by_runner",
   "matches": [
-    "body outline, forked tail, dorsal fin, pectoral fin, and eye are all present and placed as in the illustration"
+    "body outline, forked tail, dorsal fin, pectoral fin, and eye are all present and placed as in the illustration",
+    "part colours match the illustration: orange body, darker tail and dorsal fin, darkest pectoral fin, white eye with a black pupil"
   ],
   "mismatches": [],
   "next_changes": [],
   "previous": null,
   "reference_sha256": "a416cac3b000824740653bab0db7dbab37f31d2948c5c3b3f48b00e84d7af887",
   "reviewer": "agent",
-  "run_report_sha256": "b2cb4c036dd9923f266ec24a820f5344357ee56a4ba17dd018bfc2c654aa8153",
+  "run_report_sha256": "c49b2a0c8b076e727e9793f7f78c85c794334f67fa432b243005fac66736d24c",
   "schema_version": 1,
   "source_view": "Illustration side view compared with CAD Front (from -Y) panel",
   "verdict": "acceptable",

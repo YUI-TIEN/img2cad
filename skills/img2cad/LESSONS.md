@@ -5,7 +5,7 @@ Short, verified pitfalls collected from real runs. Read before modeling; add to 
 ## Source check
 
 - **A `_` throwaway variable is allowed** (`for x, _, z in points`); only `_`-prefixed function/attribute names and dunders are blocked. An earlier doc wording made one agent avoid it unnecessarily. *(blind test: castle)*
-- **`*args` unpacking was rejected before it was allowlisted.** `Polygon(*points)` and `Spline(*points)` are normal build123d idioms; the source check now allows `Starred`. If the check rejects a construct, read the error and `MODELING.md` before rewriting the model. *(examples/flanged-bushing, vase, fish)*
+- **The source allowlist was removed from the default path.** It blocked normal modelling (`*args`, `lambda`, `Box`/`Hole` at first, and `Color`) without adding real safety, since the agent writing the model can already run shell commands. Model source is now ordinary Python; `--strict-source` brings the allowlist back for untrusted source. *(examples; blind tests; photo test: character statue)*
 - **`Hole`, `Cylinder`, `Circle`, `Sphere` take a radius.** Drawings label diameters (Ø). Name parameters `*_DIAMETER` and divide by 2 at the call. *(examples/mounting-plate)*
 
 ## Geometry
@@ -22,6 +22,12 @@ Short, verified pitfalls collected from real runs. Read before modeling; add to 
 - **Revolve profiles: start at the bore radius for a hollow part, at the axis for a solid one.** A closed profile that touches the axis revolves into a solid with no bore. *(examples/flanged-bushing)*
 - **`Plane.XZ` faces −Y.** `Plane.XZ.offset(d)` is at y = −d, and a positive `extrude` goes toward −Y. `Plane.YZ.offset(x)` moves along +X. Use the plane table in `MODELING.md`. *(examples/fish)*
 - **Hollow with `offset(amount=-wall, openings=face)`.** The opening face must exist on the solid; closing a revolve profile to the axis at the top creates the disc that becomes the mouth. *(examples/vase)*
+
+## Colour
+
+- **One part per colour.** `fuse` keeps a single colour: a black eye fused into a white body came out all white. Keep each colour region as its own part in `Compound(children=[...])`; STEP keeps every part's colour and name. *(photo test: character statue; verified by STEP re-import)*
+- **A part that only connects through another part is two solids.** The fish's tail and dorsal fin as one part reported "part 'tail_and_dorsal_fin' has 2 solids"; they meet only through the body. Make them separate parts. *(examples/fish)*
+- **Stack paint by lifting it.** Eye highlights on eyes and stripes on blush were lifted a little further off the surface than the layer under them, so they show on top. *(photo test: character statue)*
 
 ## Reading the image
 

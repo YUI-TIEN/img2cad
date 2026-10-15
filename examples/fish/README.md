@@ -1,4 +1,4 @@
-# Fish (visual approximation, with a revise round)
+# Fish (visual approximation, coloured, with a revise round)
 
 **Input:** a side-view illustration of a fish.
 
@@ -17,10 +17,18 @@ with BuildSketch(Plane.XZ):
 extrude(amount=FIN_THICKNESS / 2, both=True)
 ```
 
+**Colour:** each region is its own part with the colour sampled from the image (RGB / 255): orange body, darker tail and dorsal fin, darkest pectoral fins, white eyes with black pupils. Returning `Compound(children=parts)` keeps every part's colour and name in the STEP file:
+
+```python
+body.color, body.label = Color(240 / 255, 140 / 255, 60 / 255), "body"
+return Compound(children=parts, label="fish")
+```
+
 **Revision history:** `history/r001` is the first model. Its review found the eye and the pectoral fin missing (`verdict: revise`), so `new-revision` started r002, which added both. This is the normal loop: review against the image, list concrete mismatches, change the model, and run the checks again.
 
 **Pitfalls:**
 
+- The tail and dorsal fin must be two parts: they only connect through the body, so one part holding both is two solids and fails the gate.
 - `Plane.YZ.offset(x)` moves along +X, so sections can be listed by x position. In `Ellipse(a, b)` on `Plane.YZ`, `a` is the Y (thickness) radius and `b` is the Z (height) radius.
 - The nose and tail ends are small ellipses (a few mm), so the loft closes into a rounded tip.
 - `Plane.XZ` faces −Y: `Plane.XZ.offset(d)` sits at y = −d, and a positive `extrude` goes toward −Y. The pectoral fins use the side sign to extrude outward on each side.

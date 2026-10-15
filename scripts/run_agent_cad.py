@@ -20,13 +20,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 from agent_cad_worker import parse_model_source
 from cli_args import join_negative_option_values, parse_view
-from inspect_step import inspect_step
+from inspect_step import color_rgba, inspect_step, leaf_parts
 from silhouette import compare as compare_silhouettes
 
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKER = Path(__file__).with_name("agent_cad_worker.py")
 MAX_TIMEOUT = 600
+DEFAULT_PART_COLOR = (202, 156, 102)   # parts without a colour
+PANEL_BACKGROUND = (226, 232, 238)     # light grey so white parts are visible
+OUTLINE_COLOR = (60, 68, 80)
 FONT_CANDIDATES = (
     "/System/Library/Fonts/Supplemental/Arial.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -57,11 +60,24 @@ def sha256(path: Path) -> str:
 
 
 def raster_preview(step_path: Path, output_path: Path, tolerance: float, reference_view: tuple[float, float, float] | None = None) -> dict[str, np.ndarray]:
-    """Render four shaded orthographic panels and return each panel's silhouette mask."""
+    """Render four shaded orthographic panels in part colours and return each panel's silhouette mask."""
     shape = import_step(str(step_path))
-    vertices, triangles = shape.tessellate(tolerance, 0.12)
-    coords = np.array([(float(p.X), float(p.Y), float(p.Z)) for p in vertices], dtype=np.float64)
-    faces = np.array(triangles, dtype=np.int32)
+    all_coords: list[tuple[float, float, float]] = []
+    all_faces: list[tuple[int, int, int]] = []
+    face_parts: list[int] = []
+    part_colors: list[tuple[int, int, int]] = []
+    for part_index, part in enumerate(leaf_parts(shape)):
+        vertices, triangles = part.tessellate(tolerance, 0.12)
+        if not vertices or not triangles:
+            continue
+        rgba = color_rgba(part)
+        part_colors.append(tuple(int(round(channel * 255)) for channel in rgba[:3]) if rgba else DEFAULT_PART_COLOR)
+        offset = len(all_coords)
+        all_coords.extend((float(p.X), float(p.Y), float(p.Z)) for p in vertices)
+        all_faces.extend((a + offset, b + offset, c + offset) for a, b, c in triangles)
+        face_parts.extend([len(part_colors) - 1] * len(triangles))
+    coords = np.array(all_coords, dtype=np.float64)
+    faces = np.array(all_faces, dtype=np.int32)
     if not len(coords) or not len(faces):
         raise RuntimeError("STEP tessellation produced no preview mesh")
 
@@ -94,13 +110,12 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
     title_font = load_font(25)
     masks: dict[str, np.ndarray] = {}
     draw.text((40, 24), "img2cad · STEP preview", fill="#18324b", font=title_font)
-    base = (202, 156, 102)
 
     for index, (title, direction, right, up) in enumerate(views):
         col, row = index % 2, index // 2
         left, top = 25 + col * 635, 75 + row * 405
         panel_w, panel_h = 610, 380
-        draw.rounded_rectangle((left, top, left + panel_w, top + panel_h), radius=12, fill="white", outline="#ccd7e2", width=2)
+        draw.rounded_rectangle((left, top, left + panel_w, top + panel_h), radius=12, fill=PANEL_BACKGROUND, outline="#ccd7e2", width=2)
         draw.text((left + 18, top + 12), title, fill="#18324b", font=font)
         screen_right = np.asarray(right, dtype=np.float64)
         screen_up = np.asarray(up, dtype=np.float64)
@@ -118,12 +133,13 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
         screen_x = np.rint(offset_x + projected_x * scale).astype(np.int32)
         screen_y = np.rint(offset_y - projected_y * scale).astype(np.int32)
         zbuffer = np.full((panel_h, panel_w), -np.inf, dtype=np.float64)
-        pixels = np.full((panel_h, panel_w, 3), (255, 255, 255), dtype=np.uint8)
+        pixels = np.full((panel_h, panel_w, 3), PANEL_BACKGROUND, dtype=np.uint8)
+        part_ids = np.full((panel_h, panel_w), -1, dtype=np.int32)
         # Key light from the camera side, slightly above and to the left, so
         # every panel shows the faces it looks at.
         light_vec = 0.75 * view_direction + 0.5 * screen_up - 0.3 * screen_right
         light_vec /= np.linalg.norm(light_vec)
-        for face in faces:
+        for face_index, face in enumerate(faces):
             ids = face.tolist()
             tri_x = screen_x[ids]
             tri_y = screen_y[ids]
@@ -155,9 +171,18 @@ def raster_preview(step_path: Path, output_path: Path, tolerance: float, referen
             normal_len = float(np.linalg.norm(normal)) or 1.0
             diffuse = abs(float(np.dot(normal / normal_len, light_vec)))
             brightness = 0.64 + 0.36 * diffuse
-            color = np.asarray([int(channel * brightness) for channel in base], dtype=np.uint8)
+            part_id = face_parts[face_index]
+            color = np.asarray([int(channel * brightness) for channel in part_colors[part_id]], dtype=np.uint8)
             region_z[visible] = depths[visible]
             pixels[y0:y1 + 1, x0:x1 + 1][visible] = color
+            part_ids[y0:y1 + 1, x0:x1 + 1][visible] = part_id
+        # Dark outline on the silhouette and between parts, so white or
+        # same-tone parts stay readable against the panel and each other.
+        padded = np.pad(part_ids, 1, constant_values=-1)
+        boundary = np.zeros(part_ids.shape, dtype=bool)
+        for dy, dx in ((0, 1), (2, 1), (1, 0), (1, 2)):
+            boundary |= padded[dy:dy + panel_h, dx:dx + panel_w] != part_ids
+        pixels[boundary & (part_ids >= 0)] = OUTLINE_COLOR
         masks[title] = np.isfinite(zbuffer)
         panel = Image.fromarray(pixels)
         image.paste(panel, (left, top))
@@ -187,6 +212,30 @@ def make_comparison(reference: Path, preview: Path, output_path: Path) -> None:
     canvas.save(output_path, format="PNG", optimize=True)
 
 
+def check_part_structure(inspection: dict[str, Any]) -> None:
+    """Each part must be one solid, and in an assembly every part must touch another.
+
+    A part that splits into several solids is a floating piece or a fuse that
+    silently failed; a part touching nothing else is floating in the assembly.
+    """
+    parts = inspection["parts"]
+    if len(parts) == 1 and inspection["solid_count"] > 1:
+        details = "; ".join(f"solid {index + 1}: volume {item['volume']:.1f}, center {item['center']}, size {item['size']}" for index, item in enumerate(inspection["solids"]))
+        raise RuntimeError(
+            f"model has {inspection['solid_count']} disjoint solids, expected 1. Either parts do not touch/overlap "
+            f"(a floating part) or a boolean fuse silently failed. Make parts overlap and fuse them, return a coloured "
+            f"assembly (Compound(children=[...])) if the pieces are meant to stay separate, or declare "
+            f"\"allow_multiple_solids\": true in the plan. {details}")
+    split = [part for part in parts if part["solid_count"] != 1]
+    if split:
+        details = "; ".join(f"part '{part['label']}' has {part['solid_count']} solids (center {part['center']}, size {part['size']})" for part in split)
+        raise RuntimeError(f"each assembly part must be one solid: {details}. A fuse inside that part failed or a piece floats; "
+                           f"fix it, or declare \"allow_multiple_solids\": true in the plan.")
+    if inspection.get("isolated_parts"):
+        raise RuntimeError(f"assembly parts touch no other part (floating): {', '.join(inspection['isolated_parts'])}. "
+                           f"Move them onto or into the body, or declare \"allow_multiple_solids\": true in the plan.")
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     source_path = args.model_source.expanduser().resolve()
     if not source_path.is_file():
@@ -194,7 +243,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.timeout < 1 or args.timeout > MAX_TIMEOUT:
         raise ValueError(f"--timeout must be between 1 and {MAX_TIMEOUT} seconds")
     source = source_path.read_text(encoding="utf-8")
-    parse_model_source(source, str(source_path))
+    parse_model_source(source, str(source_path), args.strict)
 
     run_dir = args.run_dir.expanduser().resolve()
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -209,7 +258,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     local_source = run_dir / "model.py"
     shutil.copyfile(source_path, local_source)
     worker_result = subprocess.run(
-        [str(cad_python), "-I", str(WORKER), str(local_source), str(run_dir)],
+        [str(cad_python), "-I", str(WORKER), str(local_source), str(run_dir), *(["--strict"] if args.strict else [])],
         cwd=run_dir,
         env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "PYTHONDONTWRITEBYTECODE": "1"},
         capture_output=True,
@@ -227,12 +276,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     (run_dir / "inspection.json").write_text(json.dumps(inspection, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if inspection["status"] != "passed":
         raise RuntimeError("STEP inspection failed: B-rep invalid or no positive-volume solid")
-    if inspection["solid_count"] > 1 and not args.allow_multiple_solids:
-        details = "; ".join(f"solid {index + 1}: volume {item['volume']:.1f}, center {item['center']}, size {item['size']}" for index, item in enumerate(inspection["solids"]))
-        raise RuntimeError(
-            f"model has {inspection['solid_count']} disjoint solids, expected 1. Either parts do not touch/overlap "
-            f"(a floating part) or a boolean fuse silently failed. Make parts overlap and fuse them, or declare "
-            f"\"allow_multiple_solids\": true in the plan for an intentional multi-body model. {details}")
+    if not args.allow_multiple_solids:
+        check_part_structure(inspection)
     preview_path = run_dir / "preview.png"
     view_masks = raster_preview(step_path, preview_path, args.mesh_tolerance, args.reference_view)
 
@@ -271,7 +316,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "step": {"path": step_path.name, "sha256": sha256(step_path)},
         "preview": {"path": preview_path.name, "sha256": sha256(preview_path)},
         "inspection": inspection,
-        "source_policy": "restricted Python AST and allowlisted build123d API; subprocess timeout; not an OS sandbox",
+        "source_policy": ("allowlisted build123d/Python subset (strict)" if args.strict else "unrestricted Python (open)") + "; isolated subprocess with timeout; not an OS sandbox",
         "execution": {"interpreter": str(cad_python), "timeout_seconds": args.timeout},
     }
     if local_reference and comparison_path:
@@ -297,7 +342,8 @@ def main() -> int:
     parser.add_argument("--mesh-tolerance", type=float, default=0.45)
     parser.add_argument("--reference-view", type=parse_view, help="direction from the model toward the camera as x,y,z (Z up); replaces the isometric panel")
     parser.add_argument("--reference-mask", type=Path, help="optional PNG mask of the object in the reference image (white = object), same size as the reference")
-    parser.add_argument("--allow-multiple-solids", action="store_true", help="accept a model made of several disjoint solids")
+    parser.add_argument("--allow-multiple-solids", action="store_true", help="accept parts made of several solids and floating parts")
+    parser.add_argument("--strict", action="store_true", help="apply the allowlist source policy (for untrusted model source)")
     args = parser.parse_args(join_negative_option_values(sys.argv[1:], ("--reference-view",)))
     try:
         if not math.isfinite(args.mesh_tolerance) or args.mesh_tolerance <= 0:

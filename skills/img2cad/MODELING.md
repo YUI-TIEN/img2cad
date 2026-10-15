@@ -4,37 +4,31 @@ How to write `model.py` for `scripts/agent_workflow.py`. Read this, the closest 
 
 ## Source contract
 
-- Define `build_model()` that returns one build123d shape. **It must be one valid solid**: the geometry gate fails a model with several disjoint solids, which is how a floating part or a silently failed `fuse` shows up. Fuse parts that overlap (builder mode or `.fuse`). For an intentional multi-body result (an assembly, or a `Compound` of overlapping primitives like the benchmark dog), set `"allow_multiple_solids": true` in `plan.json`.
-- Units are millimetres. Z is up. Put named parameters at the top of the file with a comment saying where each value came from: a drawing label, a measurement from the image, or an assumption.
-- Only the constructs below pass the source check (`scripts/agent_cad_worker.py`). The check is a restricted Python AST plus an API allowlist and a timeout; it is **not an OS sandbox**. `tests/test_model_source_policy.py` keeps this file in sync with the allowlist.
+- `model.py` is ordinary Python. Use any build123d API and any Python you need (helpers, classes, comprehensions, `lambda`, `math`, `itertools`, ...). Only two things are required: it must parse, and it must define `build_model()`.
+- `build_model()` returns a build123d shape. Return either:
+  - **one part**: a single valid solid, for example everything fused, or
+  - **a coloured assembly**: `Compound(children=[part, part, ...])`, where each part is one valid solid with its own `.color` and `.label` (see "Colour and multi-part models").
+- **The geometry gate** fails if any part splits into several solids, which is how a floating piece or a silently failed `fuse` shows up. It also fails if an assembly part touches no other part. Set `"allow_multiple_solids": true` in `plan.json` only for a model that is deliberately made of separate bodies.
+- Units are millimetres. Z is up. Put named parameters at the top of the file, with a comment saying where each value came from: a drawing label, a measurement from the image, or an assumption.
+- **Safety**: the source runs as unrestricted Python, in its own subprocess with a timeout and a minimal environment (`-I`). It is **not sandboxed**, so read the source before `source-review`. For model source you did not write or review yourself, use `--strict-source` on `source-review`/`preview`. That enforces a conservative allowlist of build123d names, `math`, and basic built-ins. It is a static check, not a security boundary; use a container or VM for truly untrusted code.
 
-## Allowed build123d names
+## Colour and multi-part models
 
-Import these with `from build123d import ...` (no `as` aliases, no `*`):
+STEP stores a name and an RGB colour per part (verified: exported colours survive re-import). Use this whenever the image has distinct colours or materials.
 
-| Group | Names |
-|---|---|
-| Placement, enums, selectors | `Align`, `Axis`, `GeomType`, `Keep`, `Location`, `Locations`, `GridLocations`, `HexLocations`, `PolarLocations`, `Mode`, `Plane`, `Pos`, `Rot`, `Rotation`, `Select`, `SortBy`, `Until`, `Vector` |
-| Builders and containers | `BuildLine`, `BuildPart`, `BuildSketch`, `Compound` |
-| 3D primitives and features | `Box`, `Cone`, `CounterBoreHole`, `CounterSinkHole`, `Cylinder`, `Hole`, `Sphere`, `Torus`, `Wedge` |
-| 2D sketch shapes | `Circle`, `Ellipse`, `Polygon`, `Rectangle`, `RectangleRounded`, `RegularPolygon`, `SlotCenterToCenter`, `SlotOverall`, `Trapezoid` |
-| 1D lines | `Bezier`, `CenterArc`, `JernArc`, `Line`, `Polyline`, `RadiusArc`, `SagittaArc`, `Spline`, `TangentArc`, `ThreePointArc` |
-| Operations | `add`, `chamfer`, `extrude`, `fillet`, `loft`, `make_face`, `mirror`, `offset`, `revolve`, `scale`, `split`, `sweep` |
+```python
+from build123d import Color, Compound
 
-## Allowed methods
+body.color, body.label = Color(0.96, 0.96, 0.95), "body"          # sample colours from the image (RGB / 255)
+eye.color, eye.label = Color(0.08, 0.08, 0.09), "left eye"
+return Compound(children=[body, eye, ...], label="statue")
+```
 
-Call these with `obj.method(...)`:
-
-- Transforms and booleans: `chamfer`, `cut`, `fuse`, `intersect`, `located`, `mirror`, `move`, `moved`, `offset`, `rotate`, `scale`, `translate`.
-- Read-only topology selectors: `edges`, `faces`, `filter_by`, `group_by`, `solids`, `sort_by`, `vertices`, `wires`. Example: `fillet(part.edges().filter_by(Axis.Z), radius=2)`; top face: `part.faces().sort_by(Axis.Z)[-1]`.
-- Containers: `append`, `extend`, `items`, `keys`, `values`.
-
-## Python and math
-
-- Built-ins: `abs`, `all`, `any`, `bool`, `dict`, `enumerate`, `float`, `int`, `len`, `list`, `max`, `min`, `range`, `reversed`, `round`, `set`, `sorted`, `str`, `sum`, `tuple`, `zip`.
-- `import math` or `from math import ...` with: `acos`, `asin`, `atan`, `atan2`, `ceil`, `cos`, `degrees`, `e`, `floor`, `hypot`, `pi`, `radians`, `sin`, `sqrt`, `tan`, `tau`.
-- Allowed syntax: functions, `for`, `if`, `with`, list/dict comprehensions and generator expressions, `*args` unpacking, tuple unpacking, and arithmetic including `//` and `%`.
-- Not allowed: `lambda`, `while`, `class`, `try`, other imports, file/network access, decorators, function names starting with `_`, attribute names starting with `_`, dunder names (`__x__`), and calling anything not listed here. A plain `_` throwaway variable is fine: `for x, _, z in points:`.
+- **One part per colour region.** Fuse everything that shares a colour into one part. `fuse` keeps only one colour, so fusing a black eye into a white body makes it all white.
+- **Painted details** (eyes, markings, blush, stripes, logos): build a thin solid on the surface, oriented along the surface normal, and give it the paint colour. An ellipsoid that sits partly inside the surface works: `Plane(origin=point, x_dir=tangent, z_dir=normal) * Sphere(1).scale((rx, ry, thickness))`. Lift details that lie on top of other details (a highlight on an eye, stripes on a blush) a little further so they show. For an exact-thickness layer on a curved surface, take a shell and clip it: `shell = offset(body, t).cut(body)` and `decal = prism.cut(prism.cut(shell))`.
+- **Every part must be one solid that touches the rest.** Two fins that only meet through the body must be two parts, not one; the gate reports a part with 2 solids.
+- The preview draws each part in its colour, with dark outlines on the silhouette and between parts. Compare the colours with the image in `comparison.png`.
+- A colour is per part, not a texture: photos, gradients, and printed text are out of scope.
 
 ## Plane cheat sheet
 

@@ -55,6 +55,67 @@ def cylindrical_features(shape: Any) -> list[dict[str, Any]]:
     return sorted(features.values(), key=lambda item: (item["kind"], item["diameter"], item["axis_point"]))
 
 
+MAX_TOUCH_CHECK_PARTS = 80
+TOUCH_TOLERANCE = 0.01
+
+
+def leaf_parts(shape: Any) -> list[Any]:
+    """Leaf shapes of an assembly (a Compound with children), or the shape itself."""
+    children = list(getattr(shape, "children", ()) or ())
+    if not children:
+        return [shape]
+    return [leaf for child in children for leaf in leaf_parts(child)]
+
+
+def color_rgba(shape: Any) -> list[float] | None:
+    color = getattr(shape, "color", None)
+    if color is None:
+        return None
+    try:
+        return [round(float(value), 4) for value in tuple(color)]
+    except TypeError:
+        return None
+
+
+def part_summaries(shape: Any) -> tuple[list[dict[str, Any]], list[str] | None]:
+    """Per-part label/colour/solids, plus labels of parts that touch no other part."""
+    parts = leaf_parts(shape)
+    summaries = []
+    for index, part in enumerate(parts):
+        box = part.bounding_box()
+        summaries.append({
+            "label": getattr(part, "label", "") or f"part {index + 1}",
+            "color": color_rgba(part),
+            "solid_count": len(part.solids()),
+            "volume": float(part.volume),
+            "center": [round(float(value), 3) for value in (box.center().X, box.center().Y, box.center().Z)],
+            "size": [round(float(value), 3) for value in (box.size.X, box.size.Y, box.size.Z)],
+        })
+    if len(parts) < 2:
+        return summaries, []
+    if len(parts) > MAX_TOUCH_CHECK_PARTS:
+        return summaries, None
+    # Group parts that touch (directly or through other parts); everything
+    # outside the group holding the most volume is floating.
+    group = list(range(len(parts)))
+
+    def root(index: int) -> int:
+        while group[index] != index:
+            group[index] = group[group[index]]
+            index = group[index]
+        return index
+
+    for first in range(len(parts)):
+        for second in range(first + 1, len(parts)):
+            if root(first) != root(second) and parts[first].distance_to(parts[second]) <= TOUCH_TOLERANCE:
+                group[root(first)] = root(second)
+    volumes: dict[int, float] = {}
+    for index, summary in enumerate(summaries):
+        volumes[root(index)] = volumes.get(root(index), 0.0) + summary["volume"]
+    main = max(volumes, key=volumes.get)
+    return summaries, [summaries[index]["label"] for index in range(len(parts)) if root(index) != main]
+
+
 def inspect_step(path: Path) -> dict[str, Any]:
     # Keep the CAD dependency lazy so --help and syntax checks work without the
     # optional CAD environment installed.
@@ -70,6 +131,7 @@ def inspect_step(path: Path) -> dict[str, Any]:
     }
     valid = bool(shape.is_valid)
     solid_volumes = [float(solid.volume) for solid in solids]
+    parts, isolated_parts = part_summaries(shape)
     solid_summaries = []
     for solid in solids:
         solid_box = solid.bounding_box()
@@ -87,6 +149,8 @@ def inspect_step(path: Path) -> dict[str, Any]:
         "volume": float(shape.volume),
         "solid_volumes": solid_volumes,
         "solids": solid_summaries,
+        "parts": parts,
+        "isolated_parts": isolated_parts,
         "cylindrical_features": cylindrical_features(shape),
         "units": "model units (img2cad convention: mm)",
     }
