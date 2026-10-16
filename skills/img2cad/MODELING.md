@@ -129,7 +129,18 @@ IMAGE_FRAME.project(x, y, z)       # model point -> image pixel
 IMAGE_FRAME.on_plane_z(px, py, z)  # image pixel -> the model point at height z on that pixel's ray
 ```
 
-Fit these to things you know are circles or straight edges. The espresso example (`examples/espresso-cup/fit_camera.py`) fits elevation, distance, scale, origin and the cup's position, radius and height to hand-picked points on three circles. It uses `scipy.optimize.least_squares` and projects candidate circles with `project`. A single pixel gives a ray, not a point: anything whose depth is not pinned by a known circle, a floor or a contact stays ambiguous along that ray.
+Fit these with `img2cad camera`. It takes a JSON list of features:
+- `circle`: picked edge points; `center`, `z` and `radius` are each known numbers or `"fit"`. `arc: "front"`/`"back"` uses part of the circle.
+- `point`: one pixel with a known `xyz`.
+- `revolve_edge`: silhouette pixels of a body of revolution, solved afterwards into (radius, height).
+
+It fits orthographic and perspective cameras and keeps perspective only when it clearly lowers the error *and* pins down the distance. It reports every value with its uncertainty, draws `overlay.png`, and writes `frame.py`. It refuses when:
+- the RMS is over 3 px;
+- an angle is uncertain by more than 3°;
+- a size or distance is uncertain by more than 25 %;
+- a position or height is uncertain by more than 2 % of the scene.
+
+`fixed` holds camera values you know (`{"roll": 0}`). `priors` holds assumptions with their uncertainty (`{"cup rim.center_y": [0, 6]}`), reported as assumptions. Relaxing a limit (`max_position_std`) is allowed only with a written reason in `notes`. See `examples/espresso-cup/camera.json`. There, the photo pins the cup's height only to ±5 mm, and the file says so. A single pixel gives a ray, not a point: anything whose depth is not pinned by a known circle, a floor or a contact stays ambiguous along that ray.
 
 ## Choosing a technique
 

@@ -23,6 +23,8 @@ SCRIPTS = Path(__file__).resolve().parent
 COMMANDS = {
     "workflow": ("agent_workflow.py", "staged, resumable image -> CAD workflow (init, observations, plan, preview, source-review, run, review, new-revision, promote, status)"),
     "build": ("run_agent_cad.py", "build one model.py: STEP + GLB/STL/3MF, checks, previews, comparison and registered overlay"),
+    "camera": ("camera_fit.py", "fit the photo's camera (IMAGE_FRAME) to known circles/points; refuses when the fit is poor or under-constrained"),
+    "mask": ("make_mask.py", "make a subject mask from polygons, ellipses and colour seeds"),
     "trace": ("trace_regions.py", "trace colour regions of a reference image into pixel outlines"),
     "inspect": ("inspect_step.py", "measure a STEP file: validity, solids, parts and colours, bounds, volume, holes/bosses"),
     "export": ("mesh_export.py", "export a STEP file to GLB, STL and 3MF"),
@@ -35,11 +37,14 @@ COMMANDS = {
 
 
 def version() -> str:
+    # A clone's VERSION file wins: stale build metadata (an egg-info) can otherwise shadow it.
+    version_file = SCRIPTS.parent / "VERSION"
+    if version_file.is_file():
+        return version_file.read_text(encoding="utf-8").strip()
     try:
         return importlib.metadata.version("img2cad")
     except importlib.metadata.PackageNotFoundError:
-        version_file = SCRIPTS.parent / "VERSION"
-        return version_file.read_text(encoding="utf-8").strip() if version_file.is_file() else "dev"
+        return "dev"
 
 
 def doctor() -> int:

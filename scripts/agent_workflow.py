@@ -27,6 +27,9 @@ ROOT = SCRIPTS.parent
 STATE_NAME = "workflow.json"
 RUN_ARTIFACTS = ("model_source", "step", "preview", "reference", "comparison", "silhouette_overlay", "reference_mask", "registered_overlay", "glb", "stl", "3mf")
 STAGES = ("observations", "plan", "source_review", "geometry", "dimensions", "visual_review")
+PASS_NAMES = ("blockout", "form", "detail", "colour")
+SIZE_SOURCES = ("measured", "known", "estimated")
+DETAIL_HANDLING = ("modelled", "painted", "omitted")
 
 
 def sha256(path: Path) -> str:
@@ -129,6 +132,9 @@ def next_action(revision: dict[str, Any]) -> str:
         return "record image observations (separate observed, inferred, and unknown evidence)"
     if stages["plan"]["status"] != "recorded":
         return "record geometry plan and fidelity target"
+    open_passes = revision.get("open_passes") or []
+    if stages["source_review"]["status"] != "passed" and open_passes:
+        return f"build pass '{open_passes[0]}': preview --stage {open_passes[0]}, then pass-review it"
     if stages["source_review"]["status"] != "passed":
         return "author model.py, inspect it, then run source-review"
     if stages["geometry"]["status"] == "failed":
@@ -256,6 +262,67 @@ def check_constraint(constraint: dict[str, Any], inspection: dict[str, Any]) -> 
     return {"name": name, "axis": axis, "expected": expected, "measured": measured, "tolerance": tolerance, "passed": abs(measured - expected) <= tolerance}
 
 
+def validate_decomposition(data: dict[str, Any], target_type: str) -> None:
+    """Quality gate on the plan: parts, their size sources, a detail inventory, and build passes.
+
+    Required for visual approximations, where details are easily skipped;
+    optional (validated when present) for dimension-constrained plans, whose
+    numeric constraints already pin the geometry.
+    """
+    required = target_type == "visual_approximation"
+    parts = data.get("parts")
+    if parts is None and not required:
+        return
+    if not isinstance(parts, list) or not parts:
+        raise ValueError("plan needs a nonempty parts list: [{\"name\", \"technique\", \"size_source\": measured|known|estimated}] (decompose before modelling)")
+    names = []
+    for part in parts:
+        if not isinstance(part, dict) or not all(isinstance(part.get(key), str) and part.get(key).strip() for key in ("name", "technique", "size_source")):
+            raise ValueError("each part needs name, technique and size_source strings")
+        if part["size_source"] not in SIZE_SOURCES:
+            raise ValueError(f"part {part['name']!r}: size_source must be one of {', '.join(SIZE_SOURCES)}")
+        if part["name"] in names:
+            raise ValueError(f"duplicate part name {part['name']!r}")
+        names.append(part["name"])
+    inventory = data.get("detail_inventory")
+    if not isinstance(inventory, list) or (required and not inventory):
+        raise ValueError("plan needs a nonempty detail_inventory: the identity-defining small details "
+                         "(bevels, seams, fasteners, paint lines, logos, holes, wear), each with its part and handling")
+    seen = set()
+    for item in inventory:
+        if not isinstance(item, dict) or not isinstance(item.get("detail"), str) or not item["detail"].strip():
+            raise ValueError("each detail_inventory entry needs a detail string")
+        if item["detail"] in seen:
+            raise ValueError(f"duplicate detail {item['detail']!r}")
+        seen.add(item["detail"])
+        if item.get("part") not in names:
+            raise ValueError(f"detail {item['detail']!r} must name one of the plan's parts ({', '.join(names)})")
+        if item.get("handling") not in DETAIL_HANDLING:
+            raise ValueError(f"detail {item['detail']!r}: handling must be one of {', '.join(DETAIL_HANDLING)}")
+        if item["handling"] == "omitted" and not str(item.get("reason", "")).strip():
+            raise ValueError(f"detail {item['detail']!r} is omitted without a reason")
+    passes = data.get("passes")
+    if passes is None and not required:
+        return
+    if not isinstance(passes, list) or not passes or any(name not in PASS_NAMES for name in passes) or len(set(passes)) != len(passes):
+        raise ValueError(f"plan needs passes: an ordered subset of {', '.join(PASS_NAMES)} (e.g. [\"blockout\", \"detail\", \"colour\"])")
+    if [name for name in PASS_NAMES if name in passes] != passes:
+        raise ValueError(f"passes must keep the order {' -> '.join(PASS_NAMES)}")
+
+
+def plan_passes(root: Path, state: dict[str, Any], revision: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    if revision["stages"]["plan"]["status"] != "recorded":
+        return [], {}
+    plan_path, _ = recorded_stage_file(root, state, revision, "plan", "plan")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    return list(plan.get("passes") or []), plan
+
+
+def pending_passes(revision: dict[str, Any], passes: list[str]) -> list[str]:
+    done = revision.get("passes", {})
+    return [name for name in passes if done.get(name, {}).get("status") != "passed"]
+
+
 def record_plan(args: argparse.Namespace) -> None:
     root = args.workflow.expanduser().resolve()
     state = load_state(root)
@@ -282,9 +349,12 @@ def record_plan(args: argparse.Namespace) -> None:
         raise ValueError("dimension_constrained plans need explicit numeric bounds in constraints")
     for constraint in data["constraints"]:
         validate_constraint(constraint)
+    validate_decomposition(data, state["target_type"])
     output = root / revision["directory"] / "plan.json"
     shutil.copyfile(source, output)
     revision["stages"]["plan"] = stage_record("recorded", {"observations": revision["stages"]["observations"]["outputs"]["observations"], "input": sha256(source)}, {"plan": sha256(output)}, path=output.name)
+    revision["passes"] = {}
+    revision["open_passes"] = list(data.get("passes") or [])
     invalidate_downstream(revision["stages"])
     save_state(root, state)
     print(f"recorded plan: {output}")
@@ -301,6 +371,10 @@ def source_review(args: argparse.Namespace) -> None:
         raise ValueError("--inspection-note must summarize the agent's source inspection")
     if stages["observations"]["status"] != "recorded" or stages["plan"]["status"] != "recorded":
         raise ValueError("image observations and geometry plan are required before source review")
+    passes, _ = plan_passes(root, state, revision)
+    missing = pending_passes(revision, passes)
+    if missing:
+        raise ValueError(f"staged passes not complete: {', '.join(missing)} (preview --stage NAME, then pass-review)")
     source = args.model.expanduser().resolve()
     if not source.is_file() or source.is_symlink():
         raise ValueError("model source must be an existing regular, non-symlink file")
@@ -432,6 +506,15 @@ def preview(args: argparse.Namespace) -> None:
     if revision["stages"]["plan"]["status"] == "recorded":
         plan_path, _ = recorded_stage_file(root, state, revision, "plan", "plan")
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    stage = getattr(args, "stage", None)
+    if stage:
+        passes = list(plan.get("passes") or [])
+        if stage not in passes:
+            raise ValueError(f"stage {stage!r} is not one of the plan's passes ({', '.join(passes) or 'none declared'})")
+        missing = pending_passes(revision, passes)
+        earlier = [name for name in passes[:passes.index(stage)] if name in missing]
+        if earlier:
+            raise ValueError(f"pass '{earlier[0]}' has not passed yet; passes cannot be skipped")
     model = args.model.expanduser().resolve()
     if not model.is_file() or model.is_symlink():
         raise ValueError("model source must be an existing regular, non-symlink file")
@@ -449,9 +532,52 @@ def preview(args: argparse.Namespace) -> None:
         print(json.dumps(detail, indent=2))
         raise RuntimeError("preview build failed (no workflow stage changed)")
     report = read_json(out_dir / "run_report.json")
+    if stage:
+        (out_dir / "stage.json").write_text(json.dumps({"stage": stage, "revision": revision["id"]}) + "\n", encoding="utf-8")
     checks = [check_constraint(constraint, report["inspection"]) for constraint in plan.get("constraints", [])]
-    print(json.dumps({"preview": "built", "evidence": "scratch only; no workflow stage changed", "directory": str(out_dir), **run_summary(out_dir, report),
+    print(json.dumps({"preview": "built", **({"stage": stage, "next": f"inspect it, then pass-review --preview {out_dir.name}"} if stage else {}), "evidence": "scratch only; no workflow stage changed", "directory": str(out_dir), **run_summary(out_dir, report),
                       "dimension_checks": checks or "none declared"}, indent=2))
+
+
+def pass_review(args: argparse.Namespace) -> None:
+    """Record the verdict on one staged pass, bound to its preview's artifacts."""
+    root = args.workflow.expanduser().resolve()
+    state = load_state(root)
+    revision = active(state)
+    passes, plan = plan_passes(root, state, revision)
+    if not passes:
+        raise ValueError("the plan declares no passes")
+    out_dir = root / "previews" / args.preview
+    stage_file = out_dir / "stage.json"
+    if not stage_file.is_file():
+        raise ValueError(f"preview {args.preview} was not built with --stage")
+    stage_info = read_json(stage_file)
+    stage = stage_info["stage"]
+    if stage_info.get("revision") != revision["id"]:
+        raise ValueError(f"preview {args.preview} belongs to revision {stage_info.get('revision')}, not {revision['id']}")
+    report = read_json(out_dir / "run_report.json")
+    if report.get("status") != "passed":
+        raise ValueError("a pass can only be reviewed on a preview whose geometry/STEP gate passed")
+    notes = read_json(args.notes)
+    verdict = notes.get("verdict")
+    if verdict not in ("pass", "revise"):
+        raise ValueError("pass review verdict must be pass or revise")
+    checked = notes.get("checked")
+    if not isinstance(checked, list) or not checked or not all(isinstance(item, str) and item.strip() for item in checked):
+        raise ValueError("pass review needs a nonempty checked list: what was compared against the image")
+    if verdict == "revise" and not notes.get("mismatches"):
+        raise ValueError("a revise verdict must list mismatches")
+    if verdict == "pass" and stage == "detail":
+        required = [item["detail"] for item in plan.get("detail_inventory", []) if item.get("handling") != "omitted"]
+        missing = [detail for detail in required if detail not in checked]
+        if missing:
+            raise ValueError(f"the detail pass must check every non-omitted detail; unchecked: {', '.join(missing)}")
+    evidence = {key: sha256(out_dir / report[key]["path"]) for key in ("model_source", "comparison", "registered_overlay") if key in report}
+    revision.setdefault("passes", {})[stage] = {"status": "passed" if verdict == "pass" else "revise", "preview": args.preview,
+                                                "evidence": evidence, "checked": checked, "mismatches": notes.get("mismatches", [])}
+    revision["open_passes"] = pending_passes(revision, passes)
+    save_state(root, state)
+    print(json.dumps({"pass": stage, "verdict": verdict, "remaining": revision["open_passes"], "next": next_action(revision)}, indent=2))
 
 
 def review(args: argparse.Namespace) -> None:
@@ -524,7 +650,8 @@ def new_revision(args: argparse.Namespace) -> None:
     stages["geometry"] = {"status": "pending", "inputs": {}, "outputs": {}}
     stages["dimensions"] = {"status": "pending", "inputs": {}, "outputs": {}}
     stages["visual_review"] = {"status": "pending", "inputs": {}, "outputs": {}}
-    state["revisions"].append({"id": revision_id, "directory": directory, "parent": previous["id"], "reason": args.reason, "target_type": state["target_type"], "stages": stages})
+    state["revisions"].append({"id": revision_id, "directory": directory, "parent": previous["id"], "reason": args.reason, "target_type": state["target_type"], "stages": stages,
+                               "passes": {}, "open_passes": list(previous.get("passes", {}).keys()) or list(previous.get("open_passes") or [])})
     save_state(root, state)
     print(json.dumps({"revision": revision_id, "previous_preserved": previous["id"], "downstream_invalidated": ["source_review", "geometry", "dimensions", "visual_review"], "next": next_action(active(state))}, indent=2))
 
@@ -654,7 +781,13 @@ def main() -> int:
     draft.add_argument("--cad-python", help="interpreter with build123d (default: $IMG2CAD_CAD_PYTHON, ./.venv-cad, or this Python)")
     draft.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z")
     draft.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object)")
+    draft.add_argument("--stage", choices=PASS_NAMES, help="build this staged pass (blockout, form, detail, colour) of the plan")
     draft.set_defaults(func=preview)
+    staged = commands.add_parser("pass-review", help="record pass/revise for one staged pass, bound to its preview")
+    staged.add_argument("workflow", type=Path)
+    staged.add_argument("--preview", required=True, help="preview directory name, e.g. p003")
+    staged.add_argument("--notes", type=Path, required=True, help='JSON: {"verdict": "pass"|"revise", "checked": [...], "mismatches": [...]}')
+    staged.set_defaults(func=pass_review)
     visual = commands.add_parser("review", help="record hash-bound acceptable/revise/blocked visual review")
     visual.add_argument("workflow", type=Path)
     visual.add_argument("--notes", type=Path, required=True)

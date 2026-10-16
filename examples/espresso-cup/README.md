@@ -34,6 +34,8 @@ IMAGE_FRAME.on_plane_z(px, py, z)   # pixel -> model point at height z
 
 The white and crema scores are limited by lighting: the cup's inner wall reflects the coffee, so the photo labels it "crema". The spoon bowl sits about 25 px right of the photo, because where its pixel ray meets the saucer, the cup's overhang leaves no room.
 
+**Re-checking the camera with `img2cad camera`:** `camera.json` holds the same picked points plus the crema edge and the cup's silhouette pixels. The tool reproduces the hand fit's profile within 1–2 mm. It also shows what the hand fit (`fit_camera.py`) hid: this photo cannot separate the cup's depth from its height. With the stated prior "cup axis within 6 mm of the saucer centre", the rim height is 53.5 ± 5.5 mm. The tool refuses at its default 2 % limit, so `camera.json` relaxes the limit to 3 % with a written reason. The camera distance is not pinned down either, so the tool picks orthographic. `model.py` predates the tool and uses the hand fit (rim 53.7 mm, perspective 0.63 m); both are within those uncertainties.
+
 **Pitfalls (all hit while building this):**
 
 - **Don't solve small parts from pixels.** Solving the spoon's depth from pixel rays and contact took about six previews and stood the spoon upright against the cup. Reading the scene ("it lies in the saucer") and using a typical size took one preview.

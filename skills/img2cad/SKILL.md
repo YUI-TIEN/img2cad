@@ -44,7 +44,8 @@ Read the project `README.md` for product boundaries. The benchmark runner is a c
 
    Small, shiny, occluded or thin parts get a typical size and are anchored on a pixel or two, not solved from pixels: one pixel is a ray, not a point, and their depth is usually not in the image. **Time-box:** if a part still looks wrong after two previews, switch it to a typical size and note the estimate in the review instead of measuring harder. Then write a concise geometry plan (major bodies, proportions, joins/cuts, parameters, and unknowns). Record an `Object2CADSpec` when the case needs reproducibility or dimensional validation. The current v1 schema only describes one rectangular prism and circular holes, so it is not a general spec format for organic shapes or assemblies.
 4. **Author the CAD model from the image.** The intended agent path is parameterized build123d/Open CASCADE source with a `build_model()` function returning a build123d Shape. Use named parameters and meaningful solids/features. `model.py` is ordinary Python with the full build123d API; `MODELING.md` covers placement, techniques, and pitfalls. When the image has distinct colours or materials, return a coloured assembly (`Compound(children=[...])` of parts with `.color` and `.label`, one part per colour region) so the STEP carries the colours. **Measure, don't eyeball:**
-   - define `IMAGE_FRAME` (pixel↔mm registration) in `model.py`: a front view by default; for a photo taken from above or at an angle pass `view=` (the camera direction), and for a close-up `distance=` (perspective). Fit them to circles or edges you know (see `examples/espresso-cup`);
+   - define `IMAGE_FRAME` (pixel↔mm registration) in `model.py`: a front view by default; for a photo taken from above or at an angle, **fit it with `img2cad camera camera.json --out fit/`**. Click points on things you know are circles (rims, wheels, dishes) or points with known positions, and the tool solves the camera. It refuses (exit 1, no frame) when the fit is poor or a value isn't pinned down. When the photo can't settle something, state it as a `prior` with its uncertainty instead of guessing. Always look at its `overlay.png`. Example: `examples/espresso-cup/camera.json`;
+   - make a subject mask with `img2cad mask` (polygons, ellipses, colour seeds) for `--reference-mask`;
    - trace painted or high-contrast details with `img2cad trace`;
    - project them with `img2cad_lib.projected_decal`.
 
@@ -58,9 +59,36 @@ Read the project `README.md` for product boundaries. The benchmark runner is a c
    img2cad workflow plan /path/to/work --file /path/to/plan.json
    ```
 
-   Observations JSON has `observed`, `inferred`, and `unknowns` string arrays, plus `evidence` entries with `claim` and `source`. Plan JSON has matching `target_type`, `goal`, nonempty `geometry_plan`, `constraints`, and `unknowns`. For `dimension_constrained`, `constraints` can contain overall bounds (`length`/`width`/`height` or `x`/`y`/`z` with `value` and optional `tolerance`, default 0.02 model units), `volume` (with an explicit absolute `tolerance`), and `hole` or `boss` entries (`diameter`, `count`, optional `tolerance`) that count full cylindrical features. Examples are in `MODELING.md`. Each part must be one solid (a single fused body, or every part of a coloured assembly), and assembly parts must touch; for a model deliberately made of separate bodies add `"allow_multiple_solids": true` to the plan. These stages are hash-bound and immutable within a revision.
+   Observations JSON has `observed`, `inferred`, and `unknowns` string arrays, plus `evidence` entries with `claim` and `source`. Plan JSON has matching `target_type`, `goal`, nonempty `geometry_plan`, `constraints`, and `unknowns`. **A visual-approximation plan is refused unless it is decomposed:**
 
-6. **Draft with `preview`, then inspect source and build.** Iterate on drafts without spending revisions:
+   ```json
+   "parts": [{"name": "cup", "technique": "spline revolve", "size_source": "measured"},
+             {"name": "spoon", "technique": "ellipsoid bowl + rod", "size_source": "known"}],
+   "detail_inventory": [{"detail": "white rim glaze", "part": "cup", "handling": "modelled"},
+                        {"detail": "logo on the saucer", "part": "saucer", "handling": "omitted", "reason": "not visible enough to trace"}],
+   "passes": ["blockout", "detail", "colour"]
+   ```
+
+   - `size_source` is `measured`, `known` or `estimated`.
+   - `detail_inventory` lists the identity-defining small details: bevels, seams, fasteners, paint lines, logos, holes, wear. Each detail names its part and is `modelled`, `painted` (a decal) or `omitted` with a reason.
+   - `passes` is an ordered subset of `blockout`, `form`, `detail`, `colour`.
+
+   Dimension-constrained plans may include the same fields; their numeric constraints already pin the geometry. For `dimension_constrained`, `constraints` can contain overall bounds (`length`/`width`/`height` or `x`/`y`/`z` with `value` and optional `tolerance`, default 0.02 model units), `volume` (with an explicit absolute `tolerance`), and `hole` or `boss` entries (`diameter`, `count`, optional `tolerance`) that count full cylindrical features. Examples are in `MODELING.md`. Each part must be one solid (a single fused body, or every part of a coloured assembly), and assembly parts must touch; for a model deliberately made of separate bodies add `"allow_multiple_solids": true` to the plan. These stages are hash-bound and immutable within a revision.
+
+6. **Build in passes, then inspect source and build.** Each declared pass is built and judged on its own; passes cannot be skipped, and `source-review` is refused until all of them pass:
+
+   ```sh
+   img2cad workflow preview /path/to/work --model draft.py --stage blockout     # main bodies only
+   img2cad workflow pass-review /path/to/work --preview p001 --notes pass.json  # {"verdict": "pass"|"revise", "checked": [...], "mismatches": [...]}
+   img2cad workflow preview /path/to/work --model draft.py --stage detail
+   img2cad workflow pass-review /path/to/work --preview p002 --notes pass.json  # checked must list every non-omitted detail
+   ```
+
+   - **Blockout:** proportions and placement of the main bodies.
+   - **Detail:** every inventory item is present.
+   - **Colour:** part colours and painted regions.
+
+   A `revise` verdict needs `mismatches`. Fix the model and preview the same stage again. Plain `preview` without `--stage` stays available for quick drafts. Iterate on drafts without spending revisions:
 
    ```sh
    img2cad workflow preview /path/to/work --model /path/to/draft.py --reference-view -0.5,-1,0.4
