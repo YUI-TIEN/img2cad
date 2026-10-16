@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import stat
@@ -165,6 +166,64 @@ class CadManufacturingTests(unittest.TestCase):
             data = mujoco.MjData(model)
             mujoco.mj_forward(model, data)
             self.assertAlmostEqual(float(data.geom_xpos[1][2]), 0.03, places=6)  # the arm sits where it was modelled
+
+    def test_urdf_guesses_shaft_joints_and_takes_materials(self) -> None:
+        from build123d import Align, Box, Color, Compound, Cylinder, Pos, export_step
+        import urdf_export
+
+        base = Box(60, 60, 10) - Cylinder(4.1, 10)
+        arm = Pos(20, 0, 12) * Box(60, 12, 4) + Pos(0, 0, -4) * Cylinder(4, 22, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        arm -= Pos(45, 0, 12) * Cylinder(2.05, 4)
+        finger = Pos(45, 0, 6) * Cylinder(2, 14, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        cover = Pos(-20, 20, 7) * Box(10, 10, 4)
+        for part, label in ((base, "base"), (arm, "arm"), (finger, "finger"), (cover, "cover")):
+            part.label, part.color = label, Color(0.5, 0.5, 0.5)
+        with tempfile.TemporaryDirectory() as temp:
+            export_step(Compound(children=[base, arm, finger, cover]), str(Path(temp) / "r.step"))
+            report = urdf_export.export_urdf(Path(temp) / "r.step", Path(temp) / "out", materials={"base": "aluminium", "finger": 7.85e-6},
+                                             guess=True)
+            joints = {j["child"]: j for j in report["joints"]}
+            self.assertEqual((joints["arm"]["parent"], joints["arm"]["type"], joints["arm"].get("guessed")), ("base", "revolute", True))
+            self.assertEqual((joints["finger"]["parent"], joints["finger"]["type"]), ("arm", "revolute"))
+            self.assertEqual(joints["cover"]["type"], "fixed")
+            masses = {link["link"]: link for link in report["links"]}
+            self.assertEqual(masses["base"]["density"], 2.7e-6)
+            self.assertEqual(masses["arm"]["density"], 1.24e-6)
+            self.assertEqual(masses["finger"]["density"], 7.85e-6)
+            self.assertAlmostEqual(masses["base"]["mass_kg"], base.volume * 2.7e-6, places=6)
+            guessed = json.loads(Path(report["joints_guessed"]).read_text())
+            arm_joint = next(j for j in guessed["joints"] if j["child"] == "arm")
+            self.assertEqual([abs(v) for v in arm_joint["axis"]], [0, 0, 1])
+            self.assertAlmostEqual(arm_joint["origin"][0], 0, places=3)
+            with self.assertRaisesRegex(ValueError, "material"):
+                urdf_export.export_urdf(Path(temp) / "r.step", Path(temp) / "out", materials={"base": "cheese"})
+
+    def test_dfm_names_hole_types(self) -> None:
+        from build123d import Axis, Box, BuildPart, CounterBoreHole, CounterSinkHole, Hole, Location, Locations, export_step
+        import dfm
+
+        with BuildPart() as block:
+            Box(40, 20, 10)
+            with Locations(block.faces().sort_by(Axis.Z)[-1]):
+                with Locations((-12, 0)):
+                    CounterBoreHole(2, 4, 3)
+                with Locations((0, 0)):
+                    CounterSinkHole(2, 4, counter_sink_angle=90)
+                with Locations((12, 0)):
+                    Hole(1.25, depth=8)  # M3 tap drill, blind
+            with Locations(Location((20, 6, 0), (0, 90, 0))):
+                Hole(1.65, depth=15)  # M4 tap drill, too deep to tap
+        with tempfile.TemporaryDirectory() as temp:
+            export_step(block.part, str(Path(temp) / "h.step"))
+            check = next(c for c in dfm.dfm(Path(temp) / "h.step", "cnc")["parts"][0]["checks"] if c["name"] == "hole_types")
+        holes = {(h["type"], h["bore_mm"]): h for h in check["evidence"]}
+        self.assertEqual(holes[("counterbore", 4.0)]["counterbore_mm"], 8.0)
+        self.assertEqual(holes[("countersink", 4.0)]["countersink_deg"], 90.0)
+        self.assertEqual(holes[("tapped", 2.5)]["likely_thread"], "M3")
+        self.assertEqual(holes[("tapped", 3.3)]["likely_thread"], "M4")
+        self.assertTrue(holes[("tapped", 3.3)]["notes"])
+        self.assertFalse(holes[("tapped", 2.5)]["notes"])
+        self.assertEqual(check["status"], "warn")
 
     def test_orient_turns_a_mushroom_cap_down(self) -> None:
         from build123d import Align, Axis, Cylinder, Pos, export_step, import_step

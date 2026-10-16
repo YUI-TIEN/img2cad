@@ -82,6 +82,7 @@
         <li><code>img2cad camera</code> <span data-zh="由已知圓與點擬合照片相機（含透視）">fit the photo's camera, perspective included, to known circles and points</span></li>
         <li><code>img2cad hull</code> <span data-zh="任意角度的多張照片 → 視覺外殼毛胚">photos from any angle → visual-hull blockout</span></li>
         <li><code>img2cad mask --sam</code> <span data-zh="點一下就用 SAM 2 切出物體">one click, SAM 2 cuts out the object</span></li>
+        <li><code>"positions": [[x, y], ...]</code> <span data-zh="尺寸關卡逐一檢查孔與凸台的位置">the dimension gate checks where every hole and boss is</span></li>
       </ul>
       <p class="note" data-zh="在一張公仔照片上，手放的橢球貼圖對黑色區域只有 0.45 IoU；改用描邊 + 投影後達到 0.84。">On a figurine photo, hand-placed ellipsoid paint overlapped the photo's black regions at 0.45 IoU; traced and projected outlines reached 0.84.</p>
     </div>
@@ -98,12 +99,12 @@
     <div class="card"><h3>model.py</h3><p data-zh="參數化 build123d 原始碼，是唯一的真實來源。">Parametric build123d source — the source of truth.</p></div>
     <div class="card"><h3>STEP</h3><p data-zh="B-rep 實體，保留零件名稱與顏色，任何 CAD 都能開。">B-rep solids with part names and colours; opens in any CAD tool.</p></div>
     <div class="card"><h3>GLB · 3MF · STL</h3><p data-zh="彩色 GLB 給網頁；3MF 每個零件帶顏色給多色列印。">Coloured GLB for the web; 3MF with a coloured object per part for multi-colour printing.</p></div>
-    <div class="card"><h3 data-zh="工程圖">Drawing</h3><p data-zh="三視圖 SVG/DXF/PDF，含外形尺寸與孔表。">Three-view SVG/DXF/PDF with overall dimensions and a hole table.</p><code>img2cad drawing</code></div>
-    <div class="card"><h3 data-zh="可列印性">Printability</h3><p data-zh="水密、懸空、床面接觸、薄壁、成型尺寸。">Watertight, overhangs, bed contact, thin walls, build volume.</p><code>img2cad printcheck</code></div>
+    <div class="card"><h3 data-zh="工程圖">Drawing</h3><p data-zh="三視圖加剖面圖（SVG/DXF/PDF）：外形尺寸、孔編號與基準位置尺寸、孔表。">Three views and a hatched section in SVG/DXF/PDF: overall dimensions, tagged holes with baseline positions, a hole table.</p><code>img2cad drawing</code></div>
+    <div class="card"><h3 data-zh="可列印性">Printability</h3><p data-zh="水密、懸空、床面接觸、薄壁、成型尺寸；加 --orient 自動找最少支撐的擺法。">Watertight, overhangs, bed contact, thin walls, build volume — and <code>--orient</code> finds the way down that needs the least support.</p><code>img2cad printcheck</code></div>
     <div class="card"><h3 data-zh="切片與送印">Slice &amp; print</h3><p data-zh="用你裝好的 PrusaSlicer、OrcaSlicer、Bambu Studio 切片；上傳到 OctoPrint、PrusaLink、Klipper 或區網的 Bambu，加 --start 才開印。">Slice with the PrusaSlicer, OrcaSlicer or Bambu Studio you have; upload to OctoPrint, PrusaLink, Klipper or a Bambu on your LAN. Printing starts only with <code>--start</code>.</p><code>img2cad slice · send</code></div>
-    <div class="card"><h3 data-zh="CNC 與鈑金">CNC &amp; sheet metal</h3><p data-zh="尖銳內角、刀具半徑、深孔、裝夾次數；鈑金厚度、孔距折彎、K 因子展開尺寸。">Sharp internal corners, tool radii, deep holes, number of setups; sheet thickness, hole-to-bend distance, K-factor flat blank.</p><code>img2cad dfm</code></div>
+    <div class="card"><h3 data-zh="CNC 與鈑金">CNC &amp; sheet metal</h3><p data-zh="尖銳內角、刀具半徑、深孔、沉頭孔／沉孔／螺紋孔辨識、裝夾次數；鈑金厚度、孔距折彎、K 因子展開尺寸。">Sharp internal corners, tool radii, deep holes, counterbores / countersinks / tapped holes, number of setups; sheet thickness, hole-to-bend distance, K-factor flat blank.</p><code>img2cad dfm</code></div>
     <div class="card"><h3 data-zh="標準零件庫">Standard parts</h3><p data-zh="ISO 螺絲（可選真螺紋）、螺帽、墊圈、軸承、漸開線齒輪、GT2 皮帶輪、MGN 滑軌、伺服馬達、NEMA 17、2020 鋁擠。">ISO screws (real threads optional), nuts, washers, bearings, involute gears, GT2 pulleys, MGN rails, servos, NEMA 17, 2020 extrusion.</p><code>img2cad parts</code></div>
-    <div class="card"><h3 data-zh="機器人格式">Robots</h3><p data-zh="從彩色組合件輸出 URDF、SDF（Gazebo）或 MJCF（MuJoCo），關節加上由 B-rep 精確算出的質量與慣量。">URDF, SDF (Gazebo) or MJCF (MuJoCo) from a coloured assembly, with joints and exact mass and inertia from the B-rep.</p><code>img2cad urdf</code></div>
+    <div class="card"><h3 data-zh="機器人格式">Robots</h3><p data-zh="從彩色組合件輸出 URDF、SDF（Gazebo）或 MJCF（MuJoCo）；可自動猜出軸孔配合的旋轉關節，每個零件可設不同材料，質量與慣量由 B-rep 精確算出。">URDF, SDF (Gazebo) or MJCF (MuJoCo) from a coloured assembly. Revolute joints guessed from shaft-in-bore fits, a material per part, exact mass and inertia from the B-rep.</p><code>img2cad urdf</code></div>
     <div class="card"><h3 data-zh="本機 3D 檢視器">Local 3D viewer</h3><p data-zh="零件列表、量測、剖面、截圖；也能透過 MCP 開啟。">Part list, measure, section planes, screenshots; also over MCP.</p><code>img2cad view</code></div>
   </div>
 </section>

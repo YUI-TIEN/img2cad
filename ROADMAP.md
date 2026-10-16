@@ -14,5 +14,5 @@ What is planned, in order. Each item names the gap it closes; see CHANGELOG.md f
 - **SAM 2 against real photos.** `img2cad mask --sam` is tested with a stand-in predictor; measure it on the examples' photos.
 - **Category tracks.** The checklists exist (MODELING.md); each still needs a tested worked example.
 - **Full sheet-metal unfolding.** `flat_blank` handles bends about one axis and does not place holes; multi-axis parts need a real unfolder.
-- **Joint guessing.** `img2cad urdf` needs a joints file; proposing joints from coaxial contacts would save a step.
+- **More joint guessing.** `--guess-joints` finds revolute shaft-in-bore fits; prismatic slides and joint limits from end stops are not guessed.
 - **Real printers.** `img2cad send` is tested against a local stand-in server; Bambu is untested on hardware.
