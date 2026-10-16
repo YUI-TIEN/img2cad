@@ -1,7 +1,8 @@
 name: Release
 
-# Push a tag vX.Y.Z (matching VERSION) to build the package, publish it to
-# PyPI and create a GitHub release.
+# Push a tag vX.Y.Z (matching VERSION), or run this workflow by hand on main,
+# to build the package, publish it to PyPI and create a GitHub release (the
+# manual run creates the vX.Y.Z tag from VERSION).
 # One-time setup on pypi.org: add a "trusted publisher" for this repository
 # (owner YUI-TIEN, repo img2cad, workflow release.yml, environment pypi).
 # No API token is stored anywhere.
@@ -9,6 +10,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +24,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Tag must match VERSION
+        if: github.event_name == 'push'
         run: test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
       - name: Build sdist and wheel
         run: |
@@ -66,6 +69,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="$(cat VERSION)"
           awk -v v="## $version" '$0==v{on=1;next} /^## /{on=0} on' CHANGELOG.md > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/* --title "img2cad $version" --notes-file notes.md
+          gh release create "v$version" dist/* --target "$GITHUB_SHA" --title "img2cad $version" --notes-file notes.md
