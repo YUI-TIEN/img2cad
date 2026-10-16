@@ -52,10 +52,11 @@
 <header class="top">
   <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 28 10v12L16 29 4 22V10z"/><path class="cut" d="M16 3v26M4 10l12 7 12-7"/></svg>img2cad</a>
   <nav>
+    <a href="#get-started" data-zh="開始使用">Get started</a>
     <a href="#how" data-zh="流程">How it works</a>
     <a href="#examples" data-zh="範例">Examples</a>
     <a href="#precision" data-zh="精度">Precision</a>
-    <a href="#install" data-zh="安裝">Install</a>
+    <a href="#install" data-zh="手動安裝">Manual install</a>
     <a href="https://github.com/YUI-TIEN/img2cad">GitHub</a>
     <button id="lang" type="button" aria-label="Switch language">中文</button>
   </nav>
@@ -68,7 +69,7 @@
     <h1 data-zh="把圖片變成<br>可編輯的彩色 CAD">Turn images into<br>editable, coloured CAD</h1>
     <p class="lede" data-zh="給 agent 一張照片、插畫或工程圖。它會觀察、規劃、寫出參數化的 build123d 程式，在本機建出 STEP，再把結果疊回原圖逐區比對、修正——每一步都留下可驗證的紀錄。">Give an agent a photo, an illustration, or an engineering drawing. It observes, plans, writes parametric build123d source, builds a STEP locally, then overlays the result on the original image region by region and revises — leaving a checkable record at every step.</p>
     <div class="cta">
-      <a class="button primary" href="#install" data-zh="安裝">Install</a>
+      <a class="button primary" href="#get-started" data-zh="開始使用">Get started</a>
       <a class="button" href="#examples" data-zh="看範例">See examples</a>
     </div>
     <ul class="facts">
@@ -85,6 +86,27 @@
     </div>
     <figcaption data-zh="左：真實照片（CC0）。右：產出的 CAD（拖曳旋轉）。相機角度和距離是從杯緣、盤緣、杯底三個圓擬合出來的，杯身輪廓再透過這台相機量出來；湯匙這種小零件用常見尺寸。">Left: a real photo (CC0). Right: the CAD it became (drag to orbit). The camera's angle and distance were fitted to three circles (cup rim, saucer rim, foot), then the cup's profile was measured through that camera; small parts like the spoon use typical sizes.</figcaption>
   </figure>
+</section>
+
+<section id="get-started" class="band">
+  <h2 data-zh="開始使用">Get started</h2>
+  <p class="section-lede" data-zh="使用能看懂圖片、也能執行本機指令的 coding agent。把下面第一段交給 agent 安裝並檢查；完成後附上圖片，用第二段描述你要的模型。">Use a coding agent that can inspect images and run local commands. Give it the first prompt to install and check img2cad; when it is ready, attach an image and use the second prompt to describe your model.</p>
+  <ol class="steps onboarding">
+    <li>
+      <span class="n">1</span>
+      <h3 data-zh="請 agent 安裝並確認">Ask your agent to install and check</h3>
+      <p data-zh="貼上這段。除了執行 doctor 檢查，也會確認目前的 agent 能使用 img2cad Skill／plugin；若需重新載入，完成後再確認。">Paste this into your agent. It will run the doctor check and verify that this agent can use the img2cad Skill/plugin; if a reload is needed, it will verify again afterward.</p>
+      <pre class="prompt"><code data-zh="為目前這個 agent 安裝 img2cad：https://github.com/YUI-TIEN/img2cad。依照 README 中適用於此平台的步驟設定本機 CAD 環境，執行文件中的 doctor 檢查。接著確認目前的 agent 能找到並使用 img2cad Skill／plugin 工作流程；若需要重啟或重新載入，請完成後再次確認，再告訴我全部已就緒。">Install img2cad from https://github.com/YUI-TIEN/img2cad for this agent. Follow the host-specific setup in its README, set up the local CAD runtime, and run the documented doctor check. Then verify that this agent can access and use the img2cad Skill/plugin workflow. If it requires a restart or reload, do that and verify again before telling me everything is ready.</code></pre>
+      <p class="step-link"><a href="https://github.com/YUI-TIEN/img2cad#manual-install" data-zh="想自己安裝？看手動安裝方式。">Prefer to install it yourself? See the manual setup.</a></p>
+    </li>
+    <li>
+      <span class="n">2</span>
+      <h3 data-zh="附上圖片，描述你想做的模型">Attach an image and describe your model</h3>
+      <p data-zh="沒有提供尺寸時，先從外觀近似開始；agent 會整理重要假設並給你預覽。">If you have no dimensions, start with a visual approximation; your agent will note key assumptions and show a preview.</p>
+      <pre class="prompt"><code data-zh="用 img2cad 根據這張圖片建立可編輯 CAD。若我沒有提供尺寸，先做外觀近似。請給我預覽、可編輯的 model.py 和 STEP 檔，並列出重要假設。">Use img2cad to make editable CAD from this image. Unless I provide dimensions, make a visual approximation. Show me a preview and provide the editable model.py and a STEP file; list important assumptions.</code></pre>
+      <p class="step-link" data-zh="CAD 幾何與檔案會在本機建置。製造前請先檢查預覽與量測結果；外觀近似不代表尺寸已驗證。">CAD geometry and exports are built locally. Check the preview and measurements before manufacturing; a visual approximation is not dimensionally verified.</p>
+    </li>
+  </ol>
 </section>
 
 <section id="how" class="band">
@@ -147,11 +169,11 @@
 </section>
 
 <section id="install" class="band">
-  <h2 data-zh="安裝">Install</h2>
+  <h2 data-zh="手動安裝">Manual install</h2>
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="claude">Claude Code</button>
     <button role="tab" data-tab="gemini">Gemini CLI</button>
-    <button role="tab" data-tab="skills">Skills</button>
+    <button role="tab" data-tab="skills" data-zh="Skills · Codex · Cursor">Skills · Codex · Cursor</button>
     <button role="tab" data-tab="mcp">MCP</button>
     <button role="tab" data-tab="cli">CLI</button>
   </div>

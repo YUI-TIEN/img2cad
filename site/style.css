@@ -151,6 +151,10 @@ main section { padding: 76px max(16px, calc((100vw - 1160px) / 2)); }
 .steps li:hover { transform: translateY(-3px); }
 .steps p { color: var(--ink-2); font-size: .93rem; margin: 0 0 14px; flex: 1; }
 .steps li > code { align-self: flex-start; color: var(--accent); background: var(--accent-soft); padding: 3px 9px; border-radius: 8px; }
+.onboarding .prompt { margin: 0 0 14px; padding: 14px; border-radius: 14px; background: var(--code-bg); color: var(--code-text); font-size: .78rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.onboarding .prompt code { font-size: inherit; }
+.onboarding .step-link { flex: 0; margin-top: auto; margin-bottom: 0; }
+.onboarding .step-link a { font-weight: 600; }
 .n { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: .88rem; margin-bottom: 12px; box-shadow: 0 6px 14px rgba(10, 132, 255, .35), inset 0 1px 0 rgba(255, 255, 255, .4); }
 
 /* ---------- Gallery ---------- */
