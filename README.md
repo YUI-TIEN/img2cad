@@ -38,7 +38,10 @@ python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock
 | `img2cad build model.py out/` | build one `model.py`: STEP + GLB/STL/3MF, checks, previews, comparison, registered overlay |
 | `img2cad trace image.png ...` | trace colour regions of a reference image into pixel outlines |
 | `img2cad inspect model.step` | measure a STEP: validity, solids, parts and colours, bounds, volume, holes/bosses |
-| `img2cad view model.step` | local 3D viewer: orbit, part list, measure, section planes, screenshots |
+| `img2cad view model.py` | 3D viewer with a live parameter panel (drag, type, rebuild locally, save back); also opens STEP/GLB/STL/3MF |
+| `img2cad params model.py` | list or set a model's parameters (module-level UPPERCASE numbers) |
+| `img2cad camera camera.json` | fit the photo's camera to known circles/points; refuses poor or under-constrained fits |
+| `img2cad mask photo.png mask.png` | subject mask from polygons, ellipses, colour seeds |
 | `img2cad export model.step out/` | GLB (coloured), 3MF (coloured parts), STL |
 | `img2cad drawing model.step out/` | three-view SVG/DXF drawing with overall dimensions and a hole table |
 | `img2cad printcheck model.step` | watertight, overhangs, bed contact, thin walls, build volume |

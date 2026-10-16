@@ -2,6 +2,11 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.11.0
+
+- **Parameter panel.** `img2cad view model.py` builds the model and lists its parameters (module-level UPPERCASE numbers, with `# [min, max] label` ranges). You can drag labels Figma-style or type values, and the model rebuilds locally without an AI round trip. Save writes the values back (with `model.py.bak`). `img2cad params` does the same from the shell.
+- **Viewer redesign.** Liquid-glass panels (blur, specular sheen, refracting rim, SVG refraction on Chromium) in light and dark. Layers panel with show/hide. Properties panel with Parameters and Inspect tabs. Floating toolbar with shortcuts, section popover, toasts, animated camera moves, soft shadows, and a mobile bottom sheet.
+
 ## 0.10.0
 
 - **Decomposition gate.** Visual-approximation plans must list `parts` (each with a technique and a size source: measured, known or estimated), a `detail_inventory` (every identity-defining detail with its part and handling: modelled, painted, or omitted with a reason), and ordered build `passes`.

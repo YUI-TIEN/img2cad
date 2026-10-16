@@ -7,12 +7,27 @@ description: Turn a finished STEP model into deliverables - interactive 3D view,
 
 Use the `img2cad` command described in [`../img2cad/SKILL.md`](../img2cad/SKILL.md) ("The `img2cad` command"). All commands read the saved STEP, so every deliverable matches the checked B-rep.
 
-## View
+## View and tune parameters
 
 ```sh
+img2cad view model.py                            # parameter panel: drag, type, live rebuild, Save
 img2cad view model.step [more files...]          # opens the browser
 img2cad view model.step --no-open --json         # prints {"url": ...}; keeps serving
 ```
+
+Opening a `model.py` builds it and lists its **parameters**, the module-level UPPERCASE numbers. Write them so the panel is useful:
+
+```python
+FLANGE_DIAMETER = 40.0  # [30, 70] flange outer diameter, mm
+SPOKES = 6              # [3, 12]
+```
+
+`[min, max]` sets the slider range and the rest of the comment is the label. Derived values (tuples, expressions) are not parameters; expose their inputs instead. In the panel:
+- Drag a label to scrub the value (Shift ×10, Alt ÷10), or type a value (arithmetic works, ↑/↓ step).
+- With **Live rebuild** on, the model rebuilds locally after each change, without an AI round trip.
+- **Save** (⌘/Ctrl+S) writes the values into `model.py` and keeps `model.py.bak`. **Reset** returns to the saved values.
+
+`img2cad params model.py [--set NAME=VALUE ...]` does the same from the shell. Shortcuts: `1`–`4` views, `M` measure, `S` section, `W` wireframe, `F` fit, `Tab` hide panels, `Esc` clear.
 
 The viewer shows STEP, GLB, STL and 3MF with part colours. Use the standard views (Front from −Y, Right from +X, Top from +Z, Iso), the part list (click to select, toggle visibility), **Measure** (pick two points; reports distance and ΔX/ΔY/ΔZ in model mm), **Section** along X/Y/Z, wireframe, and screenshot. Through MCP, `img2cad_show` returns the same URL.
 
