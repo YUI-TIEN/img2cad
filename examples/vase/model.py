@@ -3,7 +3,7 @@ from build123d import Axis, BuildLine, BuildPart, BuildSketch, Line, Plane, Spli
 # Visual approximation. The illustration has no scale; 1 px ~ 0.4 mm was
 # assumed so the vase is 200 mm tall. Each (radius, height) pair is half the
 # silhouette width measured at that height in the reference image.
-HEIGHT = 200
+HEIGHT = 200  # [120, 300] vase height, mm
 PROFILE = [
     (24, 0),      # foot
     (45, 37.5),
@@ -14,7 +14,7 @@ PROFILE = [
     (14.5, 190),  # narrowest neck
     (20, HEIGHT),  # flared lip
 ]
-WALL = 2.5
+WALL = 2.5  # [1, 6] wall thickness, mm
 
 
 def build_model():

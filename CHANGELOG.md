@@ -2,6 +2,15 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.12.0
+
+- **`img2cad hull`.** A visual-hull blockout from two or three silhouettes (front, right, top), plus `img2cad_lib.visual_hull`. It writes `hull.step`, the traced outlines, and a `model_hull.py` to carve from.
+- **PDF engineering drawings.** `img2cad drawing` writes a vector `drawing.pdf` (no extra dependencies) next to SVG and DXF.
+- **Category checklists** in MODELING.md for filling the detail inventory (mechanical, tableware, vehicles, animals, characters, buildings, products).
+- **Example parameters** carry `[min, max] label` ranges for the parameter panel. Comments only; geometry unchanged.
+- **Release workflow.** Pushing a `vX.Y.Z` tag builds and smoke-tests the wheel, publishes to PyPI via trusted publishing, and creates a GitHub release from this file.
+- **Verified the plugin path.** `claude plugin validate` passes for the plugin, marketplace and skills. The plugin installs in Claude Code (2 skills, 1 MCP server). The MCP server and `img2cad doctor` run from `uvx --from git+https://github.com/YUI-TIEN/img2cad`. Added a marketplace description.
+
 ## 0.11.0
 
 - **Parameter panel.** `img2cad view model.py` builds the model and lists its parameters (module-level UPPERCASE numbers, with `# [min, max] label` ranges). You can drag labels Figma-style or type values, and the model rebuilds locally without an AI round trip. Save writes the values back (with `model.py.bak`). `img2cad params` does the same from the shell.

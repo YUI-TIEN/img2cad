@@ -7,10 +7,10 @@ from build123d import Align, BuildPart, BuildSketch, Cone, Cylinder, Ellipse, Lo
 # image (px, py) maps to x = (px - 450) * 4, z = (560 - py) * 4 (ground z = 0).
 # Widths along Y are not visible and are estimated.
 BARREL_CENTER_Z = 880
-BARREL_HALF_LENGTH = 840
-BARREL_HALF_HEIGHT = 320
-BARREL_HALF_WIDTH = 250
-LEG_SPACING_Y = 150
+BARREL_HALF_LENGTH = 840  # [600, 1100] body half-length, mm
+BARREL_HALF_HEIGHT = 320  # [220, 420] body half-height, mm
+BARREL_HALF_WIDTH = 250  # [160, 340] body half-width, mm
+LEG_SPACING_Y = 150  # [100, 220] leg spacing across the body, mm
 # Each leg: list of (x, z) joints from the body down to the hoof, radius at each.
 LEGS = [
     ("near fore", -LEG_SPACING_Y, [(-480, 680), (-512, 340), (-496, 20)], [60, 48, 44]),

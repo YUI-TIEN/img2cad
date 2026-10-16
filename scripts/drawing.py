@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Engineering drawing from a STEP file: three views, overall dimensions, hole table.
 
-    img2cad drawing model.step out_dir            # writes drawing.svg and drawing.dxf
+    img2cad drawing model.step out_dir            # writes drawing.svg, drawing.dxf and drawing.pdf
     img2cad drawing model.step out_dir --name "Mounting plate" --formats svg
 
 Third-angle layout: front view (looking along +Y) bottom left, top view above
@@ -59,6 +59,72 @@ def hole_rows(features: list[dict[str, Any]]) -> list[str]:
         where = ", ".join(positions[(kind, diameter, axis)][:6]) + (" ..." if count > 6 else "")
         rows.append(f"{count}x {kind} D{diameter:g} along {axis} at {where}")
     return rows
+
+
+def _polyline(edge: Any, tolerance: float) -> list[tuple[float, float]]:
+    """An edge as points (straight edges: two points; curves: enough to stay within tolerance)."""
+    if edge.geom_type.name == "LINE":
+        points = [edge.position_at(0), edge.position_at(1)]
+    else:
+        count = max(8, min(400, int(edge.length / max(tolerance, 1e-6)) + 1))
+        points = [edge.position_at(i / count) for i in range(count + 1)]
+    return [(p.X, p.Y) for p in points]
+
+
+def write_pdf(path: Path, visible: list[Any], hidden: list[Any], dimensions: list[Any], labels: list[Any]) -> None:
+    """Vector PDF of the sheet (1 mm = 1 mm on paper), written directly: no extra dependencies.
+
+    Visible edges 0.35 mm, hidden edges 0.18 mm dashed, dimensions and notes
+    filled (text and arrowheads are faces) with a thin outline.
+    """
+    from build123d import Compound
+
+    everything = Compound(children=[*visible, *hidden, *dimensions, *labels])
+    box = everything.bounding_box()
+    margin = max(box.size.X, box.size.Y) * 0.04 + 5
+    tolerance = max(box.size.X, box.size.Y) / 2000
+    pt = 72 / 25.4
+    width, height = (box.size.X + 2 * margin) * pt, (box.size.Y + 2 * margin) * pt
+
+    def xy(point: tuple[float, float]) -> str:
+        return f"{(point[0] - box.min.X + margin) * pt:.2f} {(point[1] - box.min.Y + margin) * pt:.2f}"
+
+    def stroke(edges: list[Any]) -> list[str]:
+        ops = []
+        for edge in edges:
+            points = _polyline(edge, tolerance)
+            ops.append(f"{xy(points[0])} m " + " ".join(f"{xy(p)} l" for p in points[1:]) + " S")
+        return ops
+
+    ops = ["1 J 1 j", f"{0.35 * pt:.3f} w []0 d"]
+    ops += stroke([e for shape in visible for e in shape.edges()])
+    ops += [f"{0.18 * pt:.3f} w [{3 * pt:.2f} {1.5 * pt:.2f}] 0 d"]
+    ops += stroke([e for shape in hidden for e in shape.edges()])
+    ops += [f"{0.13 * pt:.3f} w []0 d", "0 g"]
+    for shape in [*dimensions, *labels]:
+        for face in shape.faces():
+            loops = []
+            for wire in face.wires():
+                points = [p for edge in wire.edges() for p in _polyline(edge, tolerance)]
+                loops.append(f"{xy(points[0])} m " + " ".join(f"{xy(p)} l" for p in points[1:]) + " h")
+            ops.append(" ".join(loops) + " f*")
+        face_edges = {id(e.wrapped) for f in shape.faces() for e in f.edges()}
+        ops += stroke([e for e in shape.edges() if id(e.wrapped) not in face_edges] if shape.faces() else shape.edges())
+    content = "\n".join(ops).encode("latin-1")
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>",
+               b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+               f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width:.2f} {height:.2f}] /Contents 4 0 R >>".encode(),
+               b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"\nendstream"]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets)
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    path.write_bytes(bytes(out))
 
 
 def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("svg", "dxf"), name: str | None = None) -> dict[str, Any]:
@@ -133,6 +199,9 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
             dxf.add_shape(label, layer="notes")
         written["dxf"] = str(out_dir / "drawing.dxf")
         dxf.write(written["dxf"])
+    if "pdf" in formats:
+        written["pdf"] = str(out_dir / "drawing.pdf")
+        write_pdf(Path(written["pdf"]), visible, hidden, dimensions, labels)
     return {"files": written, "overall_mm": {"x": round(width, 3), "y": round(depth, 3), "z": round(height, 3)},
             "notes": notes, "visible_edges": len(visible), "hidden_edges": len(hidden)}
 
@@ -141,11 +210,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("step", type=Path)
     parser.add_argument("out_dir", type=Path)
-    parser.add_argument("--formats", default="svg,dxf", help="comma-separated: svg,dxf")
+    parser.add_argument("--formats", default="svg,dxf,pdf", help="comma-separated: svg,dxf,pdf")
     parser.add_argument("--name", help="title shown on the sheet (default: the STEP file name)")
     args = parser.parse_args()
     formats = tuple(item.strip().lower() for item in args.formats.split(",") if item.strip())
-    unknown = [item for item in formats if item not in ("svg", "dxf")]
+    unknown = [item for item in formats if item not in ("svg", "dxf", "pdf")]
     if unknown:
         parser.error(f"unknown formats {unknown}")
     print(json.dumps(make_drawing(args.step, args.out_dir, formats, args.name), indent=2))

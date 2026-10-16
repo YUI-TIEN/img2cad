@@ -40,14 +40,14 @@ SAUCER_FOOT = (30.0, 34.0)  # foot ring radii, 0..1.5 mm
 CUP_X, CUP_Y = 4.42, 7.63
 CUP_OUTER = [(25.5, 4.0), (27.6, 5.0), (28.4, 9.0), (30.5, 19.7), (31.6, 35.1), (32.7, 49.9), (34.0, 53.75)]
 CUP_INNER = [(30.3, 53.75), (28.6, 46.0), (24.3, 28.0), (19.5, 18.0), (11.0, 12.5), (0.0, 11.5)]
-GLAZE = 1.5  # white glaze thickness inside and on the rim
-COFFEE_Z = 28.0
+GLAZE = 1.5  # [0.5, 3] white glaze thickness inside and on the rim, mm
+COFFEE_Z = 28.0  # [15, 45] crema level above the table, mm
 HANDLE_PX = (228, 266)  # centre of the handle loop in the photo
 HANDLE = dict(radius=8.5, tube=(3.4, 4.4))  # ring radius; tube half-sizes across the ring and sideways
 SPOON_PX = dict(bowl=(366, 280), tip=(410, 72))  # bowl centre, handle end
-SPOON_LENGTH = 105.0  # typical teaspoon (prior, not measured)
+SPOON_LENGTH = 105.0  # [85, 130] teaspoon length (typical size, not measured), mm (typical teaspoon (prior, not measured))
 SPOON_BOWL = (17.0, 12.0, 2.6)  # half-length, half-width, half-thickness of a typical bowl
-SPOON_ROD = 1.8
+SPOON_ROD = 1.8  # [1, 3] spoon handle radius, mm
 
 RED = Color(0.58, 0.12, 0.04)
 WHITE = Color(0.95, 0.90, 0.84)

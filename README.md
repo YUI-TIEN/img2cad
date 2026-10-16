@@ -23,6 +23,7 @@ The command line works without a clone (needs [uv](https://docs.astral.sh/uv/)):
 ```sh
 uvx --python 3.13 --from git+https://github.com/YUI-TIEN/img2cad img2cad doctor     # check the CAD stack
 uv tool install --python 3.13 git+https://github.com/YUI-TIEN/img2cad               # or put `img2cad` on PATH
+pip install img2cad                                                                  # once released to PyPI
 ```
 
 From a clone, use `.venv-cad/bin/python scripts/img2cad_cli.py` in place of `img2cad`:

@@ -11,8 +11,8 @@ TIERS = [
     (95, 195, 265, 145, 55, 305),
     (70, 305, 365, 115, 40, 405),
 ]
-EAVE_THICKNESS = 12   # px; the eave edge flares out by EAVE_FLARE over this height
-EAVE_FLARE = 10       # px
+EAVE_THICKNESS = 12  # [6, 24] eave thickness, px (px; the eave edge flares out by EAVE_FLARE over this height)
+EAVE_FLARE = 10  # [0, 20] eave edge flare, px
 WALL_OVERLAP = 4      # px; walls start below the roof top under them so tiers fuse
 FINIAL_RADIUS, FINIAL_BOTTOM, FINIAL_TOP = 6, 400, 485
 FINIAL_TIP_RADIUS, FINIAL_TIP_TOP = 12, 515

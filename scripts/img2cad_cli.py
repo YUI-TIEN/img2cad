@@ -24,6 +24,7 @@ COMMANDS = {
     "workflow": ("agent_workflow.py", "staged, resumable image -> CAD workflow (init, observations, plan, preview, source-review, run, review, new-revision, promote, status)"),
     "build": ("run_agent_cad.py", "build one model.py: STEP + GLB/STL/3MF, checks, previews, comparison and registered overlay"),
     "camera": ("camera_fit.py", "fit the photo's camera (IMAGE_FRAME) to known circles/points; refuses when the fit is poor or under-constrained"),
+    "hull": ("visual_hull.py", "starting body from 2-3 silhouettes (front/right/top masks): their extrusions intersected"),
     "mask": ("make_mask.py", "make a subject mask from polygons, ellipses and colour seeds"),
     "trace": ("trace_regions.py", "trace colour regions of a reference image into pixel outlines"),
     "inspect": ("inspect_step.py", "measure a STEP file: validity, solids, parts and colours, bounds, volume, holes/bosses"),
