@@ -13,6 +13,6 @@ What is planned, in order. Each item names the gap it closes; see CHANGELOG.md f
 
 - **SAM 2 against real photos.** `img2cad mask --sam` is tested with a stand-in predictor; measure it on the examples' photos.
 - **Category tracks.** The checklists exist (MODELING.md); each still needs a tested worked example.
-- **Full sheet-metal unfolding.** `flat_blank` handles bends about one axis and does not place holes; multi-axis parts need a real unfolder.
-- **More joint guessing.** `--guess-joints` finds revolute shaft-in-bore fits; prismatic slides and joint limits from end stops are not guessed.
+- **Sheet metal beyond flanges.** The unfolder handles flanges joined by bends; bends meeting bends, closed boxes and reliefs that cross bends still need sheet-metal CAD.
+- **More joint guessing.** Ball joints, gear couplings and closed kinematic loops are not guessed.
 - **Real printers.** `img2cad send` is tested against a local stand-in server; Bambu is untested on hardware.

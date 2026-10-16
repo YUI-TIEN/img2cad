@@ -498,7 +498,7 @@ async function loadParams() {
   if (data.error) { host.innerHTML = `<p class="empty">${data.error.replace(/</g, "&lt;")}</p>`; return; }
   params = data.params;
   params.forEach(p => { values[p.name] = p.value; saved[p.name] = p.saved ?? p.value; });
-  if (!params.length) { host.innerHTML = `<p class="empty">No parameters found. Name inputs in UPPERCASE at the top of <code>model.py</code>, e.g. <code>HEIGHT = 68.4  # [40, 90] height</code>.</p>`; }
+  if (!params.length) { host.innerHTML = `<p class="empty">No parameters found. Name inputs in UPPERCASE at the top of <code>model.py</code>, e.g. <code>HEIGHT = 68.4  # [40, 90] height</code>, or mark any assignment with <code># [min, max]</code> or <code># @param</code>.</p>`; }
   else renderParams();
   $("params-foot").hidden = $("tab-params").hidden;
   setDirty();
@@ -510,6 +510,14 @@ function renderParams() {
     const label = document.createElement("div"); label.className = "label";
     label.innerHTML = `${p.name.toLowerCase().replace(/_/g, " ")}${p.label ? `<small>${p.label.replace(/</g, "&lt;")}</small>` : ""}`;
     label.title = "Drag to change · Shift ×10 · Alt ÷10";
+    if (p.kind === "bool") {  // a switch, not a slider
+      const toggle = document.createElement("input"); toggle.type = "checkbox"; toggle.className = "switch";
+      const showBool = v => { toggle.checked = !!v; row.classList.toggle("changed", v !== saved[p.name]); };
+      toggle.onchange = () => { values[p.name] = toggle.checked ? 1 : 0; showBool(values[p.name]); setDirty(); scheduleBuild(); };
+      showBool(values[p.name]);
+      row.append(label, toggle); host.append(row);
+      return;
+    }
     const field = document.createElement("input"); field.className = "field"; field.inputMode = "decimal"; field.spellcheck = false;
     const slider = document.createElement("input"); slider.type = "range"; slider.className = "slider";
     slider.min = p.min; slider.max = p.max; slider.step = p.step;

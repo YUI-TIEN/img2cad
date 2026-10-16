@@ -16,7 +16,9 @@ Or from model.py (the worker puts this directory on sys.path):
 Dimensions follow the standards' nominal values (ISO 4762 socket head cap
 screws, ISO 4032 hex nuts, ISO 7089 washers, ISO 15 deep-groove bearings,
 NEMA 17 frame, 20 mm T-slot extrusion, ISO 53 involute spur gears, GT2
-pulleys, MGN miniature rails, SG90 / MG996R hobby servos). Threads are plain
+pulleys with the Gates groove profile, MGN rails with counterbored rail holes
+and tapped carriage holes (HIWIN catalogue), SG90 / MG996R hobby servos).
+Servo bodies vary between vendors: check the one you buy before a tight fit. Threads are plain
 cylinders at the nominal diameter unless you ask for `threads=True` (a real
 ISO metric helix: slower, use it for close-ups and prints, not big
 assemblies); bearings are solid rings (no balls). Good for fit checks,
@@ -32,7 +34,7 @@ import math
 from pathlib import Path
 
 from build123d import (Align, Box, Color, Compound, Cylinder, Helix, Plane, Polygon, Polyline, Pos, RegularPolygon, Rot, Sketch,
-                       export_step, extrude, make_face, Rectangle, sweep)
+                       Solid, Vector, Wire, export_step, extrude, make_face, Rectangle, sweep)
 
 STEEL = Color(0.72, 0.73, 0.75)
 BLACK_OXIDE = Color(0.16, 0.16, 0.17)
@@ -130,16 +132,19 @@ def extrusion_2020(length: float):
     return _labelled(extrude(profile, amount=length), f"2020 extrusion {length:g} mm", ALUMINIUM)
 
 
-def _involute_outline(module: float, teeth: int, pressure_deg: float = 20.0, points: int = 8) -> list[tuple[float, float]]:
+def _involute_outline(module: float, teeth: int, pressure_deg: float = 20.0, points: int = 8,
+                      shift: float = 0.0) -> list[tuple[float, float]]:
+    """Transverse tooth outline; `shift` is the profile shift coefficient x (ISO 21771)."""
     pitch_r = module * teeth / 2
-    base_r = pitch_r * math.cos(math.radians(pressure_deg))
-    tip_r, root_r = pitch_r + module, pitch_r - 1.25 * module
+    alpha = math.radians(pressure_deg)
+    base_r = pitch_r * math.cos(alpha)
+    tip_r, root_r = pitch_r + module * (1 + shift), pitch_r - module * (1.25 - shift)
 
     def inv(r: float) -> float:
         t = math.sqrt(max((r / base_r) ** 2 - 1, 0.0))
         return t - math.atan(t)
 
-    half = math.pi / (2 * teeth) + inv(pitch_r)  # half tooth angle at the base circle
+    half = (math.pi / 2 + 2 * shift * math.tan(alpha)) / teeth + inv(pitch_r)  # half tooth angle at the base circle
     start = max(base_r, root_r)
     radii = [start + (tip_r - start) * i / points for i in range(points + 1)]
     flank = [(r, half - inv(r)) for r in radii]
@@ -154,47 +159,127 @@ def _involute_outline(module: float, teeth: int, pressure_deg: float = 20.0, poi
     return outline
 
 
-def spur_gear(module: float, teeth: int, width: float, bore: float = 0.0, pressure_deg: float = 20.0):
-    """ISO 53 involute spur gear (no profile shift), centred on the Z axis from z = 0 up; pitch diameter = module x teeth."""
+def spur_gear(module: float, teeth: int, width: float, bore: float = 0.0, pressure_deg: float = 20.0,
+              helix_deg: float = 0.0, shift: float = 0.0):
+    """ISO 53 involute gear centred on the Z axis from z = 0 up.
+
+    `module` is the normal module. Spur (helix_deg = 0): pitch diameter = module x teeth.
+    Helical: pitch diameter = module x teeth / cos(helix); a positive helix is right-handed.
+    `shift` is the profile shift coefficient x (positive: thicker teeth, larger tip; use it
+    against undercut below about 17 teeth or to set a centre distance)."""
     if teeth < 6:
-        raise ValueError("a spur gear needs at least 6 teeth")
-    face = make_face(Polyline(*_involute_outline(module, teeth, pressure_deg), close=True))
-    gear = extrude(face, amount=width)
+        raise ValueError("a gear needs at least 6 teeth")
+    beta = math.radians(helix_deg)
+    transverse_module = module / math.cos(beta)
+    transverse_pressure = math.degrees(math.atan(math.tan(math.radians(pressure_deg)) / math.cos(beta)))
+    outline = _involute_outline(transverse_module, teeth, transverse_pressure, shift=shift)
+    if helix_deg:
+        pitch_r = transverse_module * teeth / 2
+        twist = math.degrees(width * math.tan(beta) / pitch_r)
+        wire = Wire.make_polygon([Vector(x, y, 0) for x, y in outline], close=True)
+        gear = Solid.extrude_linear_with_rotation(wire, (0, 0, 0), (0, 0, width), twist)
+    else:
+        gear = extrude(make_face(Polyline(*outline, close=True)), amount=width)
     if bore:
         gear -= Cylinder(bore / 2, width, align=(Align.CENTER, Align.CENTER, Align.MIN))
-    return _labelled(gear, f"spur gear m{module:g} z{teeth}", STEEL)
+    kind = f"helical gear m{module:g} z{teeth} {helix_deg:g}deg" if helix_deg else f"spur gear m{module:g} z{teeth}"
+    return _labelled(gear, kind + (f" x{shift:+g}" if shift else ""), STEEL)
+
+
+def centre_distance(module: float, teeth_a: int, teeth_b: int, helix_deg: float = 0.0) -> float:
+    """Centre distance of two meshing gears without profile shift: m (z1 + z2) / (2 cos helix)."""
+    return module * (teeth_a + teeth_b) / (2 * math.cos(math.radians(helix_deg)))
+
+
+GT2_PLD = 0.254          # pitch line differential: belt pitch line sits this far outside the pulley OD
+GT2_TOOTH_HEIGHT = 0.75  # groove depth below the OD
+GT2_TOOTH_RADIUS = 0.555  # belt tooth (groove) radius
+GT2_ROOT_RADIUS = 0.15   # fillet where the groove meets the OD
+
+
+def _gt2_outline(teeth: int, points: int = 10) -> list[tuple[float, float]]:
+    """Pulley cross-section: OD arcs, a circular groove of the GT2 belt tooth radius and depth per tooth,
+    blended into the OD by the root radius (Gates GT2 2 mm dimensions)."""
+    outer_r = teeth * 2.0 / math.pi / 2 - GT2_PLD
+    centre_r = outer_r - GT2_TOOTH_HEIGHT + GT2_TOOTH_RADIUS
+    # fillet circle tangent to the OD (inside it) and to the groove circle (outside it)
+    fillet_r = outer_r - GT2_ROOT_RADIUS
+    reach = GT2_TOOTH_RADIUS + GT2_ROOT_RADIUS
+    cos_phi = (fillet_r ** 2 + centre_r ** 2 - reach ** 2) / (2 * fillet_r * centre_r)
+    phi = math.acos(max(-1.0, min(1.0, cos_phi)))  # angle from the groove centre to the fillet centre
+    pitch = 2 * math.pi / teeth
+    outline = []
+    for k in range(teeth):
+        c = k * pitch
+        fc = (fillet_r * math.cos(c - phi), fillet_r * math.sin(c - phi))
+        gc = (centre_r * math.cos(c), centre_r * math.sin(c))
+        fd = (fillet_r * math.cos(c + phi), fillet_r * math.sin(c + phi))
+        # fillet 1: from its OD tangent point to its groove tangent point
+        a0 = c - phi
+        a1 = math.atan2(gc[1] - fc[1], gc[0] - fc[0])
+        g0 = math.atan2(fc[1] - gc[1], fc[0] - gc[0])
+        g1 = math.atan2(fd[1] - gc[1], fd[0] - gc[0])
+        if g1 > g0:
+            g1 -= 2 * math.pi
+        arcs = []
+        arcs += [(fc[0] + GT2_ROOT_RADIUS * math.cos(a0 + (_wrap(a1 - a0) * i / points)),
+                  fc[1] + GT2_ROOT_RADIUS * math.sin(a0 + (_wrap(a1 - a0) * i / points))) for i in range(points + 1)]
+        arcs += [(gc[0] + GT2_TOOTH_RADIUS * math.cos(g0 + (g1 - g0) * i / (2 * points)),
+                  gc[1] + GT2_TOOTH_RADIUS * math.sin(g0 + (g1 - g0) * i / (2 * points))) for i in range(1, 2 * points)]
+        e0 = math.atan2(gc[1] - fd[1], gc[0] - fd[0])
+        e1 = c + phi
+        arcs += [(fd[0] + GT2_ROOT_RADIUS * math.cos(e0 + _wrap(e1 - e0) * i / points),
+                  fd[1] + GT2_ROOT_RADIUS * math.sin(e0 + _wrap(e1 - e0) * i / points)) for i in range(points + 1)]
+        outline += arcs
+        # OD land up to the next tooth's first fillet
+        start, end = c + phi, c + pitch - phi
+        outline += [(outer_r * math.cos(start + (end - start) * i / points), outer_r * math.sin(start + (end - start) * i / points))
+                    for i in range(1, points)]
+    return outline
+
+
+def _wrap(angle: float) -> float:
+    return (angle + math.pi) % (2 * math.pi) - math.pi
 
 
 def gt2_pulley(teeth: int = 20, width: float = 6.0, bore: float = 5.0):
-    """GT2 (2 mm pitch) timing pulley with flanges and a hub, from z = 0 up: hub, flange, toothed section, flange."""
-    pitch_d = teeth * 2.0 / math.pi
-    outer_r = pitch_d / 2 - 0.254
+    """GT2 (2 mm pitch) timing pulley with flanges and a hub, from z = 0 up: hub, flange, toothed section, flange.
+    The teeth follow the Gates GT2 groove: belt tooth radius 0.555, depth 0.75, root radius 0.15, PLD 0.254."""
+    outer_r = teeth * 2.0 / math.pi / 2 - GT2_PLD
     hub_h, flange_t = 7.0, 1.0
     hub = Cylinder(max(outer_r + 1.5, bore / 2 + 3), hub_h, align=(Align.CENTER, Align.CENTER, Align.MIN))
     flange = Cylinder(outer_r + 2.0, flange_t, align=(Align.CENTER, Align.CENTER, Align.MIN))
-    teeth_body = Cylinder(outer_r, width, align=(Align.CENTER, Align.CENTER, Align.MIN))
-    for k in range(teeth):
-        angle = 360 * k / teeth
-        teeth_body -= Rot(0, 0, angle) * Pos(outer_r + 0.15, 0, 0) * Cylinder(0.55, width, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    teeth_body = extrude(make_face(Polyline(*_gt2_outline(teeth), close=True)), amount=width)
     pulley = hub + Pos(0, 0, hub_h) * flange + Pos(0, 0, hub_h + flange_t) * teeth_body + Pos(0, 0, hub_h + flange_t + width) * flange
     pulley -= Cylinder(bore / 2, hub_h + 2 * flange_t + width, align=(Align.CENTER, Align.CENTER, Align.MIN))
     return _labelled(pulley, f"GT2 {teeth}T pulley", ALUMINIUM)
 
 
-# MGN miniature rail: size -> (rail width, rail height, hole pitch, carriage width, carriage length (H), height rail bottom -> carriage top)
+# MGN miniature rail (HIWIN catalogue, H carriage): size -> (rail width, rail height, hole pitch, carriage width,
+# carriage length, height rail bottom -> carriage top)
 RAILS = {"MGN7": (7, 5, 15, 17, 30.8, 8), "MGN9": (9, 6, 20, 20, 39.9, 10), "MGN12": (12, 8, 25, 27, 45.4, 13), "MGN15": (15, 10, 40, 32, 58.8, 16)}
+# rail bolt holes: (through d, counterbore d, counterbore depth); carriage: (hole spacing across, along, tap drill, thread)
+RAIL_HOLES = {"MGN7": (2.4, 4.2, 2.3), "MGN9": (3.5, 6.0, 3.5), "MGN12": (3.5, 6.0, 4.5), "MGN15": (3.5, 6.0, 4.5)}
+CARRIAGE_HOLES = {"MGN7": (12, 13, 1.6, "M2"), "MGN9": (15, 16, 2.5, "M3"), "MGN12": (20, 20, 2.5, "M3"), "MGN15": (25, 25, 2.5, "M3")}
 
 
 def mgn_rail(size: str = "MGN12", length: float = 200.0):
     """MGN linear rail along X (bottom on z = 0, centred) with one H carriage in the middle; two labelled parts."""
     rw, rh, pitch, cw, cl, top = RAILS[size]
+    through, cbore, cbore_depth = RAIL_HOLES[size]
+    across, along, tap, _ = CARRIAGE_HOLES[size]
     rail = Box(length, rw, rh, align=(Align.CENTER, Align.CENTER, Align.MIN))
     count = int(length // pitch)
     for i in range(count):
         x = -((count - 1) * pitch) / 2 + i * pitch
-        rail -= Pos(x, 0, 0) * Cylinder(rw * 0.18, rh, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        rail -= Pos(x, 0, 0) * Cylinder(through / 2, rh, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        rail -= Pos(x, 0, rh - cbore_depth) * Cylinder(cbore / 2, cbore_depth, align=(Align.CENTER, Align.CENTER, Align.MIN))
     carriage = Pos(0, 0, rh * 0.45) * Box(cl, cw, top - rh * 0.45, align=(Align.CENTER, Align.CENTER, Align.MIN))
     carriage -= Box(cl, rw + 0.4, rh * 0.55 + 0.2, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    depth = min(4.0, top - rh - 0.5)
+    for x in (-along / 2, along / 2):
+        for y in (-across / 2, across / 2):  # tapped mounting holes (tap drill diameter)
+            carriage -= Pos(x, y, top - depth) * Cylinder(tap / 2, depth, align=(Align.CENTER, Align.CENTER, Align.MIN))
     return Compound(children=[_labelled(rail, f"{size} rail {length:g} mm", STEEL), _labelled(carriage, f"{size}H carriage", STEEL)])
 
 
@@ -221,21 +306,21 @@ CATALOG = {
     "bearing": ("ISO 15 deep-groove ball bearing", sorted(BEARINGS, key=lambda s: BEARINGS[s][1]), ""),
     "nema17": ("NEMA 17 stepper motor", [], "--length = body length (default 40)"),
     "extrusion2020": ("20x20 T-slot extrusion", [], "needs --length"),
-    "gear": ("ISO 53 involute spur gear", [], "--module, --teeth, --width, --bore"),
-    "pulley": ("GT2 timing pulley", [], "--teeth (default 20), --width (6), --bore (5)"),
+    "gear": ("ISO 53 involute spur or helical gear", [], "--module, --teeth, --width, --bore, --helix, --shift"),
+    "pulley": ("GT2 timing pulley (Gates groove profile)", [], "--teeth (default 20), --width (6), --bore (5)"),
     "rail": ("MGN linear rail + H carriage", sorted(RAILS, key=lambda s: RAILS[s][0]), "--length (default 200)"),
     "servo": ("hobby servo", sorted(SERVOS), ""),
 }
 
 
 def make(kind: str, size: str | None = None, length: float | None = None, threads: bool = False, module: float = 1.0,
-         teeth: int | None = None, width: float | None = None, bore: float | None = None):
+         teeth: int | None = None, width: float | None = None, bore: float | None = None, helix: float = 0.0, shift: float = 0.0):
     if kind == "screw":
         if length is None:
             raise ValueError("screw needs --length")
         return socket_head_screw(size or "M3", length, threads)
     if kind == "gear":
-        return spur_gear(module, teeth or 20, width or 6.0, bore or 0.0)
+        return spur_gear(module, teeth or 20, width or 6.0, bore or 0.0, helix_deg=helix, shift=shift)
     if kind == "pulley":
         return gt2_pulley(teeth or 20, width or 6.0, 5.0 if bore is None else bore)
     if kind == "rail":
@@ -270,13 +355,15 @@ def main() -> int:
     build.add_argument("--teeth", type=int, help="gear / pulley teeth")
     build.add_argument("--width", type=float, help="gear / pulley face width, mm")
     build.add_argument("--bore", type=float, help="gear / pulley bore diameter, mm")
+    build.add_argument("--helix", type=float, default=0.0, help="gear helix angle, degrees (0 = spur; positive = right hand)")
+    build.add_argument("--shift", type=float, default=0.0, help="gear profile shift coefficient x")
     build.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "list":
         print(json.dumps({kind: {"standard": standard, "sizes": sizes, "note": note} for kind, (standard, sizes, note) in CATALOG.items()}, indent=2))
         return 0
     try:
-        part = make(args.kind, args.size, args.length, args.threads, args.module, args.teeth, args.width, args.bore)
+        part = make(args.kind, args.size, args.length, args.threads, args.module, args.teeth, args.width, args.bore, args.helix, args.shift)
     except (KeyError, ValueError) as error:
         parser.error(f"{error}")
     args.out.parent.mkdir(parents=True, exist_ok=True)

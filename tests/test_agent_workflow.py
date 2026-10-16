@@ -228,6 +228,27 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertTrue(agent_workflow.check_constraint({"name": "volume", "value": 23000, "tolerance": 150}, inspection)["passed"])
         self.assertTrue(agent_workflow.check_constraint({"name": "length", "value": 80}, inspection)["passed"])
 
+    def test_face_constraints_locate_pockets_slots_and_steps(self) -> None:
+        inspection = {"planar_faces": [
+            {"normal": "+z", "offset": 6.0, "center": [0.0, 0.0], "size": [80.0, 50.0], "area": 3800.0},   # top
+            {"normal": "+z", "offset": 3.0, "center": [20.0, 0.0], "size": [20.0, 10.0], "area": 200.0},   # pocket floor
+            {"normal": "+z", "offset": 3.0, "center": [-25.0, 0.0], "size": [6.0, 50.0], "area": 300.0},  # slot floor
+            {"normal": "-x", "offset": -40.0, "center": [0.0, 3.0], "size": [50.0, 6.0], "area": 300.0},
+        ]}
+        for bad in ({"name": "face", "normal": "up", "offset": 3}, {"name": "face", "normal": "+z"},
+                    {"name": "face", "normal": "+z", "offset": 3, "center": [1]}, {"name": "face", "normal": "+z", "offset": 3, "count": 0}):
+            with self.assertRaises(ValueError):
+                agent_workflow.validate_constraint(bad)
+        pocket = {"name": "face", "normal": "+z", "offset": 3, "center": [20, 0], "size": [20, 10], "label": "pocket floor"}
+        agent_workflow.validate_constraint(pocket)
+        self.assertTrue(agent_workflow.check_constraint(pocket, inspection)["passed"])
+        moved = agent_workflow.check_constraint({**pocket, "center": [22, 0]}, inspection)
+        self.assertFalse(moved["passed"])
+        self.assertEqual(moved["nearest"]["center"], [20.0, 0.0])
+        self.assertFalse(agent_workflow.check_constraint({**pocket, "offset": 2}, inspection)["passed"])  # floor at the wrong depth
+        self.assertTrue(agent_workflow.check_constraint({"name": "face", "normal": "+z", "offset": 3, "count": 2}, inspection)["passed"])
+        self.assertTrue(agent_workflow.check_constraint({"name": "face", "normal": "-x", "offset": -40}, inspection)["passed"])
+
     def test_hole_positions_are_checked(self) -> None:
         corners = [[-32, -17], [-32, 17], [32, -17], [32, 17]]
         features = [{"kind": "hole", "diameter": 6.0, "full": True, "axis_direction": [0, 0, 1], "axis_point": [x, y, 0]} for x, y in corners]
@@ -305,6 +326,9 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertIn("--reference-view=-0.35,-1.0,0.35", command)
         self.assertIn("--allow-multiple-solids", command)
         self.assertNotIn("--allow-multiple-solids", agent_workflow.runner_command(self.workflow, state, {}, self.root / "model.py", self.root / "out", args))
+        auto = argparse.Namespace(cad_python=sys.executable, reference_view=None, reference_mask=Path("auto"))
+        command = agent_workflow.runner_command(self.workflow, state, {}, self.root / "model.py", self.root / "out", auto)
+        self.assertEqual(command[command.index("--reference-mask") + 1], "auto")  # built by the runner, not a missing file
 
     def test_plan_rejects_non_boolean_multi_solid_flag(self) -> None:
         observations = self.json_file("observations.json", {"observed": [], "inferred": [], "unknowns": []})

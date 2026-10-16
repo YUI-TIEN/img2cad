@@ -97,6 +97,22 @@ class CameraFitTests(unittest.TestCase):
         self.assertLess(int(mask.sum()), 40 * 40)
         self.assertTrue(mask[50, 50] and not mask[2, 2])
 
+    def test_auto_mask_separates_an_object_from_a_busy_background(self) -> None:
+        import numpy as np
+
+        import make_mask
+
+        rng = np.random.default_rng(3)
+        rows, cols = np.mgrid[0:240, 0:320]
+        stripes = np.stack([128 + 100 * np.sin(cols / 9 + rows / 13), 128 + 100 * np.sin(cols / 17 - rows / 7 + 1),
+                            128 + 90 * np.cos(cols / 11)], -1) + rng.normal(0, 12, (240, 320, 3))
+        target = ((cols - 170) / 80) ** 2 + ((rows - 120) / 60) ** 2 < 1
+        shade = 0.6 + 0.4 * (1 - (cols - 170) / 160)
+        body = np.stack([200 * shade, 40 * shade + 20, 60 * shade + 10], -1) + rng.normal(0, 8, (240, 320, 3))
+        image = np.where(target[..., None], body, stripes).clip(0, 255).astype(np.uint8)
+        found = make_mask.auto_mask(image, box=(70, 40, 270, 200))
+        self.assertGreater((found & target).sum() / (found | target).sum(), 0.9)
+
     def test_sam_mask_uses_the_predictor_and_reports_a_missing_install(self) -> None:
         import types
 

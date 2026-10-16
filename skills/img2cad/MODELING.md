@@ -51,6 +51,7 @@ Use these whenever the image has details that matter (paint, markings, feature o
    ```
 
    - Include every colour present on the subject in the palette, including a darker "shade" of the main colour, so shadows don't get assigned to paint.
+   - Real photos with shading, gradients or highlights: add `--shading-tolerant` (colours compared mostly by hue and saturation), or let the tool find the colours: `--quantize 4 --trace all` clusters the subject into its 4 main colours (named c1..c4, largest first) and traces them all.
    - Each traced region has an `outline`, `holes` (for example the highlight inside an eye), a centroid, and a bbox, all in image pixels.
    - Regions touching the mask edge are dropped (`--edge-band`).
    - Check `regions.png`, then copy the outlines you need into `model.py` as literals, so the model stays self-contained and hash-pinned.
@@ -156,7 +157,7 @@ It fits orthographic and perspective cameras and keeps perspective only when it 
 | Thin flat parts (fins, ribs, blades) | `Polygon` on the matching plane → `extrude(amount=t/2, both=True)` | `examples/fish` |
 | Quick blocky stand-in | Scaled `Sphere`/`Cylinder` primitives; fuse them (a `Compound` needs `allow_multiple_solids`) | `benchmark/cases/visual-pose-dog` |
 | Lattice, truss, tower | Lofted frustum shell, then cut triangular X-brace windows through its faces (one solid, no strut fusing) | `examples/falcon9-pad` |
-| Two or three views available (front/side/top) | `img2cad hull` → visual-hull blockout from the silhouettes, then carve the concavities | (tool; see SKILL.md) |
+| Two or more views (front/side/top, or photos with fitted cameras) | `img2cad hull` → visual-hull blockout from the silhouettes; declare hollows that open toward a camera as `cavities` (opening mask + depth), then carve the rest | (tool; see SKILL.md) |
 
 ## Category checklists
 
@@ -187,10 +188,13 @@ For each item decide `modelled`, `painted` (a decal) or `omitted` with a reason.
 {"name": "boss", "diameter": 24, "count": 1}
 {"name": "hole", "diameter": 6, "count": 4, "axis": "z", "positions": [[-32, -17], [-32, 17], [32, -17], [32, 17]], "position_tolerance": 0.05}
 {"name": "volume", "value": 22767.8, "tolerance": 1.0}
+{"name": "face", "normal": "+z", "offset": 3, "center": [20, 0], "size": [20, 10], "label": "pocket floor"}
+{"name": "face", "normal": "+z", "offset": 8, "count": 1, "label": "step"}
 ```
 
 - `length`/`width`/`height` (or `x`/`y`/`z`) compare overall STEP bounds. The default tolerance is 0.02.
 - `hole` and `boss` count full cylindrical features of that diameter (holes and bores vs. shafts and bosses), grouped by axis. Fillet rounds are partial cylinders and are ignored. Add `axis` (`x`/`y`/`z`) to count only features along it, and `positions` (one per feature, in model coordinates: `[a, b]` across the axis, i.e. `(x, y)` for `z`, `(y, z)` for `x`, `(x, z)` for `y`, or `[x, y, z]`) to check where each one is: every expected position must have its own feature whose axis passes within `position_tolerance` (default 0.05 mm). Without `positions`, **position is not checked**; declare them whenever the drawing gives them.
+- `face` finds flat faces square to an axis: `normal` is the outward direction (`+z` for a pocket floor or step seen from above, `-x` for the left end), `offset` the face's coordinate along that axis (the floor's height), and optional `center` and `size` the face's extent in the plane's other two axes (x, y for a z face; y, z for x; x, z for y) within `position_tolerance` and `tolerance`. Use it for pocket and slot floors (depth and place), steps and ledges. `count` (default 1) says how many such faces. A floor with fillets at its edges is smaller than the pocket by the fillet radius.
 - `volume` needs an explicit absolute tolerance in mm³. It catches a missing feature or a wrong size that the bounds cannot.
 
 ## Iterating with `preview`
@@ -202,7 +206,7 @@ For each item decide `modelled`, `painted` (a decal) or `omitted` with a reason.
 `run` and `preview` report an advisory `silhouette` block and write `silhouette.png`. The reference outline is found by growing the background in from the image border (plus enclosed regions that match a common background colour, such as sky between legs). It is compared with each CAD view after normalizing position and scale, and mirrored views are tried too. Treat it as a hint about proportions, never a gate:
 
 - **Check `reliable` first.** It is `false`, with `unreliable_reasons`, when the outline does not look like one clean object: several blobs, a speckled edge, or touching the border. That is what happens on real photos with grass, trees, or a background coloured like the subject, and on line drawings. When it is false, ignore the number.
-- **For photos, supply a mask**: trace the subject's outline in image pixels and pass the mask with `--reference-mask mask.png`. A rough 12-point polygon was enough for a real cat photo (unreliable 0.48 became a reliable 0.79 at the matching view):
+- **For photos, supply a mask**: `--reference-mask auto` separates the object from the background by colour (GrabCut-style, no extra install; works on busy backgrounds when the object's colours differ from them somewhere). Look at the kept `reference_mask.png`; when it is wrong, trace the subject's outline in image pixels and pass `--reference-mask mask.png`. A rough 12-point polygon was enough for a real cat photo (unreliable 0.48 became a reliable 0.79 at the matching view):
 
   ```python
   # run with .venv-cad/bin/python (it has Pillow); this is a helper script, not model source

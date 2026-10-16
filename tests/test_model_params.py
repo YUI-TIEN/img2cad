@@ -22,13 +22,16 @@ HEIGHT = 20.0  # [10, 40] overall height, mm
 SPOKES = 6  # [3, 12]
 OFFSET = -2.5
 NAME_LENGTH: float = 7.25  # annotated
-SIZES = (1, 2)  # tuple: not a parameter
+SIZES = (1, 2)  # tuple: one parameter per element
 lower = 3  # lowercase: not a parameter
-FLAG = True  # bool: not a parameter
+FLAG = True  # bool: a switch
 DERIVED = HEIGHT * 2  # computed: not a parameter
 
 
 def build_model():
+    wall = 1.5  # [1, 3] wall inside the function
+    count = 4  # @param hole count
+    unmarked = 9
     return Box(HEIGHT, HEIGHT, HEIGHT)
 '''
 
@@ -36,7 +39,15 @@ def build_model():
 class ModelParamsTests(unittest.TestCase):
     def test_finds_numeric_uppercase_constants_with_ranges_and_labels(self) -> None:
         params = {p["name"]: p for p in find_params(SOURCE)}
-        self.assertEqual(sorted(params), ["HEIGHT", "NAME_LENGTH", "OFFSET", "SPOKES"])
+        self.assertEqual(sorted(params), ["FLAG", "HEIGHT", "NAME_LENGTH", "OFFSET", "SIZES[0]", "SIZES[1]", "SPOKES",
+                                          "build_model.count", "build_model.wall"])
+        self.assertEqual(params["build_model.wall"]["min"], 1.0)
+        self.assertEqual(params["build_model.count"]["label"], "hole count")
+        edited = apply_params(SOURCE, {"FLAG": 0, "SIZES[1]": 5, "build_model.wall": 2.0})
+        self.assertIn("FLAG = False", edited)
+        self.assertIn("SIZES = (1, 5)", edited)
+        self.assertIn("wall = 2.0  # [1, 3]", edited)
+        self.assertEqual((params["FLAG"]["kind"], params["FLAG"]["min"], params["FLAG"]["max"]), ("bool", 0, 1))
         self.assertEqual((params["HEIGHT"]["min"], params["HEIGHT"]["max"], params["HEIGHT"]["label"]), (10.0, 40.0, "overall height, mm"))
         self.assertTrue(params["SPOKES"]["integer"])
         self.assertEqual(params["SPOKES"]["step"], 1)

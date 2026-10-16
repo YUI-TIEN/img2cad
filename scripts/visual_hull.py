@@ -29,7 +29,17 @@ must share one model frame, so fit them against the same known features:
 Each silhouette is extruded straight through the model and the extrusions are
 intersected. The result contains the object but is larger wherever no view
 sees a concavity (a cup's hollow, the space between legs): it is a blockout,
-not the answer. `model_hull.py` rebuilds it from the traced outlines with
+not the answer.
+
+A hollow that opens toward a camera can be cut in: give the opening's mask
+in that view (the rim's inside, white) and how deep it goes, from the
+object's face nearest that camera. Depth is not in any silhouette: take it
+from a known dimension, a side photo or the plan, and say it is estimated:
+
+    {"views": [...],
+     "cavities": [{"view": "top", "mask": "opening_mask.png", "mm_per_px": 0.5, "origin_px": [320, 240], "depth": 72}]}
+
+A cavity may use a fitted "frame" instead of "view", like the views. `model_hull.py` rebuilds it from the traced outlines with
 `img2cad_lib.visual_hull`, so the agent can start from it and carve.
 """
 
@@ -95,20 +105,38 @@ def run(spec_path: Path, out_dir: Path, simplify_px: float = 1.0) -> dict[str, A
         seen.add(name)
         outlines.append({"view": name, "outline_mm": [[round(a, 3), round(b, 3)] for a, b in
                                                        to_mm(outline, float(view["mm_per_px"]), tuple(view["origin_px"]))]})
-    hull = visual_hull(outlines)
+    cavities = []
+    for cavity in spec.get("cavities") or []:
+        outline = outline_from_mask((spec_path.parent / cavity["mask"]).resolve(), simplify_px)
+        if "depth" not in cavity:
+            raise ValueError("each cavity needs a depth in mm (it is not visible in any silhouette)")
+        if "frame" in cavity:
+            frame = cavity["frame"]
+            if isinstance(frame, str):
+                frame = json.loads((spec_path.parent / frame).read_text(encoding="utf-8"))
+                frame = frame.get("frame", frame)
+            mm = to_mm(outline, float(frame["mm_per_px"]), tuple(frame["origin_px"]))
+            entry = {"frame": {key: frame.get(key) for key in ("view", "roll", "distance")}}
+        else:
+            if cavity.get("view") not in VIEWS:
+                raise ValueError(f"each cavity's view must be one of {', '.join(VIEWS)} or a fitted frame")
+            mm = to_mm(outline, float(cavity["mm_per_px"]), tuple(cavity["origin_px"]))
+            entry = {"view": cavity["view"]}
+        cavities.append({**entry, "depth": float(cavity["depth"]), "outline_mm": [[round(a, 3), round(b, 3)] for a, b in mm]})
+    hull = visual_hull(outlines, cavities)
     out_dir.mkdir(parents=True, exist_ok=True)
     export_step(hull, str(out_dir / "hull.step"))
-    (out_dir / "outlines.json").write_text(json.dumps(outlines) + "\n", encoding="utf-8")
+    (out_dir / "outlines.json").write_text(json.dumps({"views": outlines, "cavities": cavities}) + "\n", encoding="utf-8")
     (out_dir / "model_hull.py").write_text(
         '"""Visual-hull blockout: the intersection of the traced silhouettes. Carve concavities from here."""\n\n'
         "import json\nfrom pathlib import Path\n\nfrom build123d import *\nfrom img2cad_lib import visual_hull\n\n"
         "OUTLINES = json.loads((Path(__file__).parent / \"outlines.json\").read_text())\n\n\n"
         "def build_model():\n    return visual_hull(OUTLINES)\n", encoding="utf-8")
     box = hull.bounding_box()
-    report = {"views": sorted(seen), "volume_mm3": round(float(hull.volume), 2),
+    report = {"views": sorted(seen), "cavities": len(cavities), "volume_mm3": round(float(hull.volume), 2),
               "size_mm": [round(float(v), 3) for v in (box.size.X, box.size.Y, box.size.Z)],
               "files": {name: str(out_dir / name) for name in ("hull.step", "outlines.json", "model_hull.py")},
-              "note": "contains the object; concavities no view sees are filled (a blockout, not the final shape)"}
+              "note": "contains the object; concavities no view sees are filled unless declared as cavities (a blockout, not the final shape)"}
     (out_dir / "hull.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
