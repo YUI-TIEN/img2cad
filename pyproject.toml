@@ -34,7 +34,7 @@ packages = ["img2cad"]
 package-dir = { "img2cad" = "scripts" }
 
 [tool.setuptools.package-data]
-img2cad = ["vendor/three/*", "vendor/three/**/*"]
+img2cad = ["viewer.html", "vendor/three/*", "vendor/three/**/*"]
 
 [tool.setuptools.dynamic]
 version = { file = "VERSION" }
