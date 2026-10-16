@@ -126,6 +126,9 @@ class DeliverableTests(unittest.TestCase):
         placed = sorted((f["diameter"], *f["from_datum"]) for f in report["feature_dimensions"])
         self.assertEqual(placed, [(6.0, 8.0, 8.0), (6.0, 8.0, 42.0), (6.0, 72.0, 8.0), (6.0, 72.0, 42.0), (10.0, 40.0, 25.0)])
         self.assertTrue(all(f["view"] == "top" for f in report["feature_dimensions"]))
+        # Section A-A through the plate's centre cuts the D10 hole: 80 x 6 minus 10 x 6.
+        self.assertAlmostEqual(report["section"]["cut_area_mm2"], 80 * 6 - 10 * 6, delta=0.5)
+        self.assertGreater(report["section"]["hatch_lines"], 10)
         svg = (self.root / "drawing/drawing.svg").read_text(encoding="utf-8")
         self.assertIn("<svg", svg)
         self.assertGreater(svg.count("<path"), 20)

@@ -11,6 +11,9 @@ CNC (3-axis, tool along Z, part machined from the top):
 * `small_internal_radii`   vertical concave arcs (pocket corners, slots) tighter than the tool
 * `deep_holes`             holes deeper than 4x (warn) / 10x (fail) their diameter
 * `tiny_holes`             holes under 1 mm diameter (drill, not mill; often impractical)
+* `hole_types`             each hole read as plain, counterbored, countersunk (with its angle) or
+                           likely tapped (bore = an ISO tap drill); tapped deeper than 3x the
+                           thread warns, countersinks off 82/90/100/120 degrees warn
 * `undercut_faces`         faces whose outward normal points down (-Z) above the bottom:
                            they need a second setup or a 5-axis machine
 * `setups`                 the fewest 3-axis setups (+-X, +-Y, +-Z) that reach every face and
@@ -74,8 +77,94 @@ def _concave_cylinders(solid):
         direction = np.abs([axis.direction.X, axis.direction.Y, axis.direction.Z])
         length = float(extent @ direction)
         sweep = math.degrees(face.area / (face.radius * length)) if length > 1e-9 else 0.0
-        found.append((face, float(face.radius), axis.direction, sweep, length))
+        # the kernel often splits a hole into two half cylinders: merge faces on one axis and radius
+        same = next((i for i, (f, r, d, _, _) in enumerate(found) if abs(r - face.radius) < 1e-6
+                     and _coaxial(f.axis_of_rotation.position, d, axis.position, axis.direction)), None)
+        if same is None:
+            found.append((face, float(face.radius), axis.direction, sweep, length))
+        else:
+            f, r, d, total, longest = found[same]
+            found[same] = (f, r, d, min(360.0, total + sweep), max(longest, length))
     return found
+
+
+# ISO metric coarse tap drill -> thread
+TAP_DRILLS = {1.6: "M2", 2.05: "M2.5", 2.5: "M3", 3.3: "M4", 4.2: "M5", 5.0: "M6", 6.8: "M8", 8.5: "M10", 10.2: "M12", 14.0: "M16"}
+THREAD_MAJOR = {"M2": 2, "M2.5": 2.5, "M3": 3, "M4": 4, "M5": 5, "M6": 6, "M8": 8, "M10": 10, "M12": 12, "M16": 16}
+COUNTERSINK_ANGLES = (82, 90, 100, 120)
+
+
+def _concave_cones(solid):
+    """(face, axis point, axis direction, included angle in degrees) for countersink-like cones."""
+    from build123d import GeomType, Vector
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+
+    found = []
+    for face in solid.faces():
+        if face.geom_type != GeomType.CONE:
+            continue
+        cone = BRepAdaptor_Surface(face.wrapped).Cone()
+        axis = cone.Axis()
+        point = Vector(axis.Location().X(), axis.Location().Y(), axis.Location().Z())
+        direction = Vector(axis.Direction().X(), axis.Direction().Y(), axis.Direction().Z())
+        centre = face.center()
+        to_axis = point + direction * (centre - point).dot(direction) - centre
+        if face.normal_at(centre).dot(to_axis) > 0:  # material outside the cone: a countersink, not a point
+            found.append((face, point, direction, abs(2 * __import__("math").degrees(cone.SemiAngle()))))
+    return found
+
+
+def _coaxial(point_a, direction_a, point_b, direction_b) -> bool:
+    if abs(abs(direction_a.dot(direction_b)) - 1) > 1e-4:
+        return False
+    offset = point_b - point_a
+    return (offset - direction_a * offset.dot(direction_a)).length < 1e-3
+
+
+def hole_types(solid, cylinders) -> list[dict[str, Any]]:
+    """Group coaxial concave cylinders and cones into holes and name each one."""
+    groups: list[dict[str, Any]] = []
+    for face, radius, direction, sweep, length in cylinders:
+        if sweep < 359:
+            continue
+        point = face.axis_of_rotation.position
+        group = next((g for g in groups if _coaxial(g["point"], g["direction"], point, direction)), None)
+        if group is None:
+            group = {"point": point, "direction": direction, "steps": [], "cones": [], "faces": []}
+            groups.append(group)
+        group["steps"].append((2 * radius, length))
+        group["faces"].append(face)
+    for face, point, direction, angle in _concave_cones(solid):
+        group = next((g for g in groups if _coaxial(g["point"], g["direction"], point, direction)), None)
+        if group is not None:
+            group["cones"].append(angle)
+    holes = []
+    for group in groups:
+        diameters = sorted({round(d, 3) for d, _ in group["steps"]})
+        bore = diameters[0]
+        depth = sum(length for d, length in group["steps"] if round(d, 3) == bore)
+        centre = group["faces"][0].center()
+        on_axis = group["point"] + group["direction"] * (centre - group["point"]).dot(group["direction"])
+        entry = {"at_mm": _round(on_axis), "axis": _round(group["direction"]), "bore_mm": bore,
+                 "bore_depth_mm": round(depth, 3), "type": "plain", "notes": []}
+        if len(diameters) > 1:
+            entry["type"] = "counterbore"
+            entry["counterbore_mm"] = diameters[-1]
+            entry["counterbore_depth_mm"] = round(sum(l for d, l in group["steps"] if round(d, 3) == diameters[-1]), 3)
+        if group["cones"]:
+            entry["type"] = "countersink" if entry["type"] == "plain" else entry["type"] + "+countersink"
+            angle = round(group["cones"][0], 1)
+            entry["countersink_deg"] = angle
+            if not any(abs(angle - a) <= 1 for a in COUNTERSINK_ANGLES):
+                entry["notes"].append(f"countersink {angle:g} deg is not a standard tool (82, 90, 100, 120)")
+        thread = next((t for drill, t in TAP_DRILLS.items() if abs(drill - bore) <= 0.05), None)
+        if thread:
+            entry["likely_thread"] = thread
+            entry["type"] = "tapped" if entry["type"] == "plain" else entry["type"] + "+tapped"
+            if depth > 3 * THREAD_MAJOR[thread] + 1e-6:
+                entry["notes"].append(f"{thread} tapped {depth:.3g} mm deep (> 3 x {THREAD_MAJOR[thread]:g}); taps break, use a shorter thread or thread milling")
+        holes.append(entry)
+    return holes
 
 
 def _round(vector) -> list[float]:
@@ -123,6 +212,12 @@ def cnc_checks(solid, tool_radius: float) -> list[dict[str, Any]]:
     tiny = [{"at_mm": _round(face.center()), "diameter_mm": round(2 * r, 3)} for face, r, _ in holes if 2 * r < 1.0]
     check("tiny_holes", "warn" if tiny else "pass",
           f"{len(tiny)} holes under 1 mm diameter" if tiny else "no hole under 1 mm", tiny)
+    found = hole_types(solid, cylinders)
+    kinds = sorted({h["type"] for h in found})
+    flagged = [h for h in found if h["notes"]]
+    check("hole_types", "warn" if flagged else "pass",
+          (f"{len(found)} holes: " + ", ".join(f"{sum(h['type'] == k for h in found)} {k}" for k in kinds) if found else "no holes")
+          + (f"; {len(flagged)} need attention" if flagged else ""), flagged + [h for h in found if not h["notes"]])
 
     bottom = solid.bounding_box().min.Z
     under = []

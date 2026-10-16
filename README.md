@@ -101,13 +101,13 @@ img2cad view runs/mug/model.py      # 3D viewer + parameter sliders
 | `inspect model.step` | validity, parts, colours, bounds, volume, holes |
 | `view` · `params` | 3D viewer with live parameters · list/set parameters |
 | `export model.step out/` | GLB (coloured), 3MF (coloured parts), STL |
-| `drawing model.step out/` | three-view SVG/DXF/PDF: overall dimensions, tagged holes/bosses with baseline position dimensions, hole table |
+| `drawing model.step out/` | three views + hatched section A-A in SVG/DXF/PDF: overall dimensions, tagged holes/bosses with baseline positions, hole table |
 | `printcheck model.step [--orient]` | watertight, overhangs, bed contact, thin walls, build volume; `--orient` picks the orientation needing the least support |
 | `slice model.3mf --out x.gcode` | G-code via installed PrusaSlicer / SuperSlicer / OrcaSlicer / Bambu Studio |
 | `send x.gcode --printer octoprint --host …` | upload to OctoPrint, PrusaLink, Moonraker (Klipper) or Bambu LAN; `--start` prints |
-| `dfm model.step --process cnc\|sheet` | CNC: sharp internal corners, tool radii, deep holes, setups · sheet: thickness, hole-to-bend, bends, flat blank |
+| `dfm model.step --process cnc\|sheet` | CNC: sharp internal corners, tool radii, deep holes, counterbores/countersinks/tapped holes, setups · sheet: thickness, hole-to-bend, bends, flat blank |
 | `parts make screw --size M3 --length 12` | ISO screws (real threads with `--threads`), nuts, washers, bearings, spur gears, GT2 pulleys, MGN rails, servos, NEMA 17, 2020 extrusion |
-| `urdf model.step --out robot/` | URDF, SDF or MuJoCo MJCF + meshes with joints and exact mass/inertia |
+| `urdf model.step --out robot/` | URDF, SDF or MuJoCo MJCF + meshes; joints guessed from shaft-in-bore fits, a material per part, exact mass/inertia |
 | `mcp` · `doctor` · `version` | MCP server (stdio) · environment check · version |
 
 `img2cad <command> --help` shows every option. Full CLI reference: [docs/WORKFLOW.md](docs/WORKFLOW.md).

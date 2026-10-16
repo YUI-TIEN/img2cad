@@ -20,8 +20,20 @@ root link (the largest part, or "root" in the file):
 `origin` is the joint's position in model millimetres (world frame); the
 exporter turns it into parent-relative metres and offsets each child's
 mesh so the robot appears exactly as modelled at zero joint angles. Link
-names are the part labels, made URDF-safe. Density is kg/mm^3 (default
-1.24e-6: PLA).
+names are the part labels, made URDF-safe.
+
+Materials: `--density` (kg/mm^3, default 1.24e-6: PLA) applies to every part
+unless the part has its own, from `--material arm=aluminium` (repeatable) or
+`"materials": {"arm": "aluminium", "shaft": 7.85e-6}` in joints.json. Names:
+abs, aluminium/aluminum, brass, carbon_fibre, copper, nylon, petg, pla, resin,
+stainless, steel, titanium, wood.
+
+`--guess-joints` proposes a revolute joint wherever one part's shaft or boss
+sits in another part's bore on the same axis (diameters within 1 mm), for
+parts the joints file does not already connect. The tree grows outward from
+the root; guessed joints are marked `"guessed": true` in the report and
+written to joints_guessed.json beside the robot, so they can be reviewed,
+given limits, and passed back with `--joints`.
 """
 
 from __future__ import annotations
@@ -34,6 +46,73 @@ from typing import Any
 from xml.sax.saxutils import quoteattr
 
 JOINT_TYPES = ("fixed", "revolute", "continuous", "prismatic")
+MATERIALS = {"pla": 1.24e-6, "petg": 1.27e-6, "abs": 1.04e-6, "nylon": 1.14e-6, "resin": 1.15e-6, "wood": 0.6e-6,
+             "aluminium": 2.7e-6, "aluminum": 2.7e-6, "steel": 7.85e-6, "stainless": 8.0e-6, "brass": 8.5e-6,
+             "copper": 8.96e-6, "titanium": 4.43e-6, "carbon_fibre": 1.6e-6}
+FIT_CLEARANCE_MM = 1.0  # bore diameter minus shaft diameter, at most
+AXIS_TOLERANCE_MM = 0.05
+
+
+def density_of(value: Any) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    if isinstance(value, str) and value.lower() in MATERIALS:
+        return MATERIALS[value.lower()]
+    raise ValueError(f"material {value!r}: give a density in kg/mm^3 or one of {', '.join(sorted(MATERIALS))}")
+
+
+def _line_distance(point_a, direction_a, point_b) -> float:
+    offset = [point_b[i] - point_a[i] for i in range(3)]
+    along = sum(offset[i] * direction_a[i] for i in range(3))
+    return sum((offset[i] - along * direction_a[i]) ** 2 for i in range(3)) ** 0.5
+
+
+def guess_joints(links: dict[str, Any], root: str, connected: set[str]) -> list[dict[str, Any]]:
+    """Revolute joints from shaft-in-bore fits, as a tree grown from the root over parts not yet connected."""
+    from build123d import CenterOf
+
+    from inspect_step import cylindrical_features
+
+    features = {name: [f for f in cylindrical_features(part) if f.get("sweep", 0) >= 0.5] for name, part in links.items()}
+    fits: dict[tuple[str, str], dict[str, Any]] = {}
+    names = list(links)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            best = None
+            for shaft_part, bore_part in ((a, b), (b, a)):
+                for shaft in (f for f in features[shaft_part] if f["kind"] == "boss"):
+                    for bore in (f for f in features[bore_part] if f["kind"] == "hole"):
+                        clearance = bore["diameter"] - shaft["diameter"]
+                        parallel = abs(sum(x * y for x, y in zip(shaft["axis_direction"], bore["axis_direction"])))
+                        if not (-0.05 <= clearance <= FIT_CLEARANCE_MM and parallel > 0.9999):
+                            continue
+                        if _line_distance(bore["axis_point"], bore["axis_direction"], shaft["axis_point"]) > AXIS_TOLERANCE_MM:
+                            continue
+                        if best is None or clearance < best["clearance"]:
+                            best = {"clearance": clearance, "axis_point": bore["axis_point"], "axis": bore["axis_direction"],
+                                    "diameter": bore["diameter"]}
+            if best:
+                fits[(a, b)] = fits[(b, a)] = best
+    joints = []
+    reached = {root} | (connected & set(names))
+    frontier = [root]
+    while frontier:
+        parent = frontier.pop(0)
+        for child in names:
+            fit = fits.get((parent, child))
+            if child in reached or fit is None:
+                continue
+            centre = links[child].center(CenterOf.MASS)
+            point, axis = fit["axis_point"], fit["axis"]
+            # the joint origin: the point on the axis nearest the child's centre of mass
+            along = sum((c - p) * d for c, p, d in zip((centre.X, centre.Y, centre.Z), point, axis))
+            origin = [round(p + along * d, 4) for p, d in zip(point, axis)]
+            joints.append({"name": f"{parent}_to_{child}", "type": "revolute", "parent": parent, "child": child,
+                           "origin": origin, "axis": [round(v, 6) for v in axis], "guessed": True,
+                           "evidence": f"shaft/bore D{fit['diameter']:g} mm, clearance {fit['clearance']:.3g} mm"})
+            reached.add(child)
+            frontier.append(child)
+    return joints
 
 
 def safe(name: str) -> str:
@@ -45,7 +124,8 @@ def vec(values) -> str:
 
 
 def export_urdf(step_path: Path, out_dir: Path, joints_spec: dict[str, Any] | None = None, density: float = 1.24e-6,
-                robot_name: str | None = None, fmt: str = "urdf") -> dict[str, Any]:
+                robot_name: str | None = None, fmt: str = "urdf", materials: dict[str, Any] | None = None,
+                guess: bool = False) -> dict[str, Any]:
     from build123d import CenterOf, export_stl, import_step
 
     from inspect_step import color_rgba, leaf_parts
@@ -74,6 +154,18 @@ def export_urdf(step_path: Path, out_dir: Path, joints_spec: dict[str, Any] | No
         if joint["child"] == root or joint["child"] in joints:
             raise ValueError(f"link {joint['child']!r} has more than one parent (or is the root)")
         joints[joint["child"]] = joint
+    material_of = {**spec.get("materials", {}), **(materials or {})}
+    unknown = [name for name in material_of if name not in links]
+    if unknown:
+        raise ValueError(f"materials for unknown parts {', '.join(unknown)} ({', '.join(links)})")
+    densities = {name: density_of(material_of[name]) if name in material_of else density for name in links}
+    guessed = []
+    if guess:
+        connected = set(joints) | {j["parent"] for j in joints.values()}
+        for joint in guess_joints(links, root, connected):
+            if joint["child"] not in joints:
+                joints[joint["child"]] = joint
+                guessed.append(joint)
     for name in links:
         if name != root and name not in joints:
             joints[name] = {"name": f"{root}_to_{name}", "type": "fixed", "parent": root, "child": name, "origin": [0, 0, 0]}
@@ -97,17 +189,24 @@ def export_urdf(step_path: Path, out_dir: Path, joints_spec: dict[str, Any] | No
     for name, part in links.items():
         export_stl(part, str(meshes / f"{name}.stl"))
         com = part.center(CenterOf.MASS)
-        k = density * 1e-6  # mm^5 x kg/mm^3 -> kg m^2
-        data[name] = {"rgba": color_rgba(part) or [0.7, 0.7, 0.7, 1.0], "mass": float(part.volume) * density,
+        k = densities[name] * 1e-6  # mm^5 x kg/mm^3 -> kg m^2
+        data[name] = {"rgba": color_rgba(part) or [0.7, 0.7, 0.7, 1.0], "mass": float(part.volume) * densities[name],
                       "com": [(c - f) * 1e-3 for c, f in zip((com.X, com.Y, com.Z), frame[name])],
                       "inertia": [[v * k for v in row] for row in part.matrix_of_inertia],
                       "frame_m": [v * 1e-3 for v in frame[name]]}
     writer = {"urdf": _urdf, "sdf": _sdf, "mjcf": _mjcf}[fmt]
     path = out_dir / f"{robot}.{ {'urdf': 'urdf', 'sdf': 'sdf', 'mjcf': 'xml'}[fmt] }"
     path.write_text(writer(robot, root, data, joints), encoding="utf-8")
-    return {fmt: str(path), "format": fmt, "root": root,
-            "links": [{"link": n, "mass_kg": round(d["mass"], 6)} for n, d in data.items()],
-            "joints": [{"name": j.get("name"), "type": j.get("type", "fixed"), "parent": j["parent"], "child": c} for c, j in joints.items()]}
+    report = {fmt: str(path), "format": fmt, "root": root,
+              "links": [{"link": n, "mass_kg": round(d["mass"], 6), "density": densities[n]} for n, d in data.items()],
+              "joints": [{"name": j.get("name"), "type": j.get("type", "fixed"), "parent": j["parent"], "child": c,
+                          **({"guessed": True, "evidence": j["evidence"]} if j.get("guessed") else {})} for c, j in joints.items()]}
+    if guess:
+        explicit = [j for j in (joints_spec or {}).get("joints", [])]
+        guessed_file = out_dir / "joints_guessed.json"
+        guessed_file.write_text(json.dumps({"root": root, "materials": material_of, "joints": explicit + guessed}, indent=2) + "\n", encoding="utf-8")
+        report["joints_guessed"] = str(guessed_file)
+    return report
 
 
 def _joint_name(joint: dict) -> str:
@@ -220,10 +319,20 @@ def main() -> int:
     parser.add_argument("--density", type=float, default=1.24e-6, help="kg/mm^3 (PLA 1.24e-6, aluminium 2.7e-6, steel 7.85e-6)")
     parser.add_argument("--name", help="robot name (default: from the file)")
     parser.add_argument("--format", choices=("urdf", "sdf", "mjcf"), default="urdf")
+    parser.add_argument("--material", action="append", default=[], metavar="PART=MATERIAL",
+                        help="per-part material name or density, e.g. arm=aluminium or shaft=7.85e-6 (repeatable)")
+    parser.add_argument("--guess-joints", action="store_true", help="add revolute joints at shaft-in-bore fits")
     args = parser.parse_args()
     spec = json.loads(args.joints.read_text(encoding="utf-8")) if args.joints else None
     try:
-        print(json.dumps(export_urdf(args.step, args.out, spec, args.density, args.name, args.format), indent=2))
+        materials = {}
+        for item in args.material:
+            part, _, value = item.partition("=")
+            try:
+                materials[part] = float(value)
+            except ValueError:
+                materials[part] = value
+        print(json.dumps(export_urdf(args.step, args.out, spec, args.density, args.name, args.format, materials, args.guess_joints), indent=2))
     except ValueError as error:
         parser.exit(2, f"FAIL: {error}\n")
     return 0

@@ -2,6 +2,13 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.16.0
+
+- **Section view on drawings.** Section A-A cuts the part through its centre (XZ plane), marked on the top view, with hatched cut faces; `--no-section` leaves it out.
+- **CNC hole types.** `dfm --process cnc` names each hole: plain, counterbore, countersink (with its angle) or likely tapped (bore = ISO tap drill). It warns on taps deeper than 3 × the thread and on non-standard countersink angles. Holes the kernel splits into half cylinders now count as full holes in every check.
+- **Robots: materials and joint guessing.** `img2cad urdf --material PART=NAME|DENSITY` (or `"materials"` in joints.json) sets density per part. `--guess-joints` adds revolute joints at shaft-in-bore fits and writes `joints_guessed.json` for review.
+- **Website** lists hole position checks, `printcheck --orient`, the section view, hole types and joint guessing.
+
 ## 0.15.0
 
 - **Hole and boss positions in the dimension gate.** `hole`/`boss` constraints take `axis` and `positions`; each expected centre must have its own feature whose axis passes within `position_tolerance` (default 0.05 mm). The check reports each offset.

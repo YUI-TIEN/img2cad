@@ -5,7 +5,9 @@
     img2cad drawing model.step out_dir --name "Mounting plate" --formats svg
 
 Third-angle layout: front view (looking along +Y) bottom left, top view above
-it, right view to its right. Visible edges are solid, hidden edges dashed.
+it, right view to its right, and section A-A (cut through the centre along
+the XZ plane, marked on the top view, cut faces hatched) beside the right view
+(`--no-section` leaves it out). Visible edges are solid, hidden edges dashed.
 Overall width, height and depth are dimensioned. Every full cylindrical hole
 and boss along X, Y or Z is tagged (H1, B1, ...) with its diameter in the view
 that looks down its axis, and its centre is dimensioned from that view's
@@ -31,8 +33,28 @@ VIEWS = {
 }
 
 
-def project(shape: Any, name: str) -> tuple[list[Any], list[Any]]:
-    """Visible and hidden edges of one view, centred on the view's own origin."""
+def project(shape: Any, name: str, frame: Any = None) -> tuple[list[Any], list[Any]]:
+    """Visible and hidden edges of one view, centred on the view's own origin.
+
+    `frame` (from `view_frame` of another shape) projects in that shape's frame
+    instead, so a cut-away half lines up with the whole part's view."""
+    from build123d import Compound, Pos
+
+    direction, up = VIEWS[name]
+    look_at, distance, shift = frame or (None, None, None)
+    if look_at is None:
+        center = shape.bounding_box().center()
+        look_at = (center.X, center.Y, center.Z)
+        distance = shape.bounding_box().diagonal * 10
+    origin = tuple(look_at[i] + direction[i] * distance for i in range(3))
+    visible, hidden = shape.project_to_viewport(origin, up, look_at)
+    if shift is None:
+        box = Compound(list(visible) + list(hidden)).bounding_box()
+        shift = Pos(-box.center().X, -box.center().Y, 0)
+    return [shift * edge for edge in visible], [shift * edge for edge in hidden]
+
+
+def view_frame(shape: Any, name: str) -> tuple[Any, float, Any]:
     from build123d import Compound, Pos
 
     direction, up = VIEWS[name]
@@ -42,8 +64,32 @@ def project(shape: Any, name: str) -> tuple[list[Any], list[Any]]:
     origin = tuple(look_at[i] + direction[i] * distance for i in range(3))
     visible, hidden = shape.project_to_viewport(origin, up, look_at)
     box = Compound(list(visible) + list(hidden)).bounding_box()
-    shift = Pos(-box.center().X, -box.center().Y, 0)
-    return [shift * edge for edge in visible], [shift * edge for edge in hidden]
+    return look_at, distance, Pos(-box.center().X, -box.center().Y, 0)
+
+
+def section_view(shape: Any, spacing: float) -> tuple[list[Any], list[Any], float]:
+    """Section A-A: the part cut by the XZ plane through its centre, seen from the front (-Y), with the
+    cut faces hatched at 45 degrees. Returns (visible edges, hatch lines, cut area); edges are in front-view coordinates."""
+    from build123d import Edge, Keep, Plane, section, split
+
+    center = shape.bounding_box().center()
+    plane = Plane(origin=(center.X, center.Y, center.Z), x_dir=(1, 0, 0), z_dir=(0, -1, 0))
+    cut = section(shape, plane)
+    if not cut.faces():
+        return [], [], 0.0
+    behind = split(shape, bisect_by=plane, keep=Keep.BOTTOM)  # the half behind the cut (+Y), seen from -Y
+    visible, _ = project(behind, "front", view_frame(shape, "front"))
+    flat = plane.to_local_coords(cut)  # local x = X - cX, local y = Z - cZ: the front view's coordinates
+    box = flat.bounding_box()
+    hatch = []
+    reach = box.size.X + box.size.Y
+    offset = box.min.Y - box.max.X - spacing
+    while offset < box.max.Y - box.min.X + spacing:
+        line = Edge.make_line((box.min.X - 1, box.min.X - 1 + offset), (box.min.X - 1 + reach + 2, box.min.X - 1 + offset + reach + 2))
+        for face in flat.faces():
+            hatch += [edge for edge in face.intersect(line) or [] if hasattr(edge, "length") and edge.length > 1e-6]
+        offset += spacing
+    return visible, hatch, float(cut.area)
 
 
 def hole_rows(features: list[dict[str, Any]]) -> list[str]:
@@ -166,8 +212,9 @@ def write_pdf(path: Path, visible: list[Any], hidden: list[Any], dimensions: lis
     path.write_bytes(bytes(out))
 
 
-def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("svg", "dxf"), name: str | None = None) -> dict[str, Any]:
-    from build123d import Align, Draft, ExportDXF, ExportSVG, ExtensionLine, LineType, Pos, Text, Unit, import_step
+def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("svg", "dxf"), name: str | None = None,
+                 with_section: bool = True) -> dict[str, Any]:
+    from build123d import Align, Draft, Edge, ExportDXF, ExportSVG, ExtensionLine, LineType, Pos, Text, Unit, import_step
 
     from inspect_step import cylindrical_features
 
@@ -193,6 +240,24 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
     right_at = Pos(width / 2 + gap + depth / 2, 0)
     visible = front_visible + [top_at * e for e in top_visible] + [right_at * e for e in right_visible]
     hidden = front_hidden + [top_at * e for e in top_hidden] + [right_at * e for e in right_hidden]
+    hatch: list[Any] = []
+    section_labels: list[Any] = []
+    section_area = 0.0
+    if with_section:
+        cut_visible, cut_hatch, section_area = section_view(shape, max(font * 0.6, scale_ref / 60))
+        if cut_visible:
+            right_dims = len(unique_values([f["from_datum"][1] for f in placed["right"]]))
+            section_at = Pos(right_at.position.X + depth / 2 + gap + step * right_dims + width / 2, 0)
+            visible += [section_at * e for e in cut_visible]
+            hatch = [section_at * e for e in cut_hatch]
+            # the cutting plane on the top view (y = centre), chain line past both ends, labelled A
+            reach = width / 2 + font * 1.5
+            cut_line = Pos(0, top_at.position.Y) * Edge.make_line((-reach, 0), (reach, 0))
+            hidden.append(cut_line)
+            section_labels = [Pos(x, top_at.position.Y + font * 0.4) * Text("A", font_size=font, align=(Align.CENTER, Align.MIN))
+                              for x in (-reach, reach)]
+            section_labels.append(Pos(section_at.position.X, -height / 2 - font * 4) *
+                                  Text("SECTION A-A", font_size=font, align=(Align.CENTER, Align.MAX)))
 
     offset = font * 2.5
     dimensions = [
@@ -237,7 +302,7 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
     note_x = right_at.position.X - depth / 2
     note_y = top_at.position.Y + depth / 2
     labels = [Pos(note_x, note_y - index * font * 1.6) * Text(line, font_size=font if index else font * 1.3, align=(Align.MIN, Align.MAX))
-              for index, line in enumerate(notes)] + tags
+              for index, line in enumerate(notes)] + tags + section_labels
 
     out_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, str] = {}
@@ -247,7 +312,10 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
         svg.add_layer("hidden", line_weight=0.18, line_type=LineType.ISO_DASH)
         svg.add_layer("dimensions", line_weight=0.13, fill_color=(0, 0, 0))
         svg.add_layer("notes", line_weight=0.05, fill_color=(0, 0, 0))
+        svg.add_layer("hatch", line_weight=0.13)
         svg.add_shape(visible, layer="visible")
+        if hatch:
+            svg.add_shape(hatch, layer="hatch")
         if hidden:
             svg.add_shape(hidden, layer="hidden")
         for dimension in dimensions:
@@ -262,7 +330,10 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
         dxf.add_layer("hidden", line_weight=0.18, line_type=LineType.ISO_DASH)
         dxf.add_layer("dimensions", line_weight=0.13)
         dxf.add_layer("notes", line_weight=0.05)
+        dxf.add_layer("hatch", line_weight=0.13)
         dxf.add_shape(visible, layer="visible")
+        if hatch:
+            dxf.add_shape(hatch, layer="hatch")
         if hidden:
             dxf.add_shape(hidden, layer="hidden")
         for dimension in dimensions:
@@ -273,9 +344,10 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
         dxf.write(written["dxf"])
     if "pdf" in formats:
         written["pdf"] = str(out_dir / "drawing.pdf")
-        write_pdf(Path(written["pdf"]), visible, hidden, dimensions, labels)
+        write_pdf(Path(written["pdf"]), visible, hidden, dimensions + hatch, labels)
     return {"files": written, "overall_mm": {"x": round(width, 3), "y": round(depth, 3), "z": round(height, 3)},
-            "notes": notes, "feature_dimensions": feature_dimensions, "visible_edges": len(visible), "hidden_edges": len(hidden)}
+            "notes": notes, "feature_dimensions": feature_dimensions,
+            "section": {"plane": "XZ through the centre", "cut_area_mm2": round(section_area, 2), "hatch_lines": len(hatch)} if hatch else None, "visible_edges": len(visible), "hidden_edges": len(hidden)}
 
 
 def main() -> int:
@@ -284,12 +356,13 @@ def main() -> int:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--formats", default="svg,dxf,pdf", help="comma-separated: svg,dxf,pdf")
     parser.add_argument("--name", help="title shown on the sheet (default: the STEP file name)")
+    parser.add_argument("--no-section", action="store_true", help="leave out section A-A")
     args = parser.parse_args()
     formats = tuple(item.strip().lower() for item in args.formats.split(",") if item.strip())
     unknown = [item for item in formats if item not in ("svg", "dxf", "pdf")]
     if unknown:
         parser.error(f"unknown formats {unknown}")
-    print(json.dumps(make_drawing(args.step, args.out_dir, formats, args.name), indent=2))
+    print(json.dumps(make_drawing(args.step, args.out_dir, formats, args.name, not args.no_section), indent=2))
     return 0
 
 
