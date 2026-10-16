@@ -2,6 +2,14 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.14.0
+
+- **`img2cad send`.** Uploads G-code to OctoPrint, PrusaLink, Moonraker (Klipper) or a Bambu printer in LAN mode (FTPS; `--start` over MQTT with `paho-mqtt`). Upload is the default; printing needs `--start`. Keys come from `IMG2CAD_PRINTER_KEY`. Not exposed over MCP.
+- **More standard parts.** ISO 53 involute spur gears, GT2 pulleys, MGN rails with a carriage, SG90 / MG996R servos, and real ISO metric threads (`--threads`).
+- **SDF and MJCF.** `img2cad urdf --format sdf|mjcf` writes Gazebo and MuJoCo models from the same joints file. The MJCF loads in MuJoCo with each part where it was modelled.
+- **DFM.** CNC `setups` plans the fewest ±X/±Y/±Z setups; sheet metal adds `hole_to_bend` and a K-factor `flat_blank` (blank size, bend allowances and deductions) for bends about one axis.
+- **Website** shows the new outputs and installs from PyPI.
+
 ## 0.13.0
 
 - **SAM 2 masks.** `img2cad mask --sam --point x,y [--negative x,y] [--box x0,y0,x1,y1]` adds Meta's SAM 2 segmentation (optional extra: `pip install "img2cad[sam]"`). Without it, `--sam` fails with the install hint; the polygon/seed tools are unchanged.

@@ -13,5 +13,6 @@ What is planned, in order. Each item names the gap it closes; see CHANGELOG.md f
 
 - **SAM 2 against real photos.** `img2cad mask --sam` is tested with a stand-in predictor; measure it on the examples' photos.
 - **Category tracks.** The checklists exist (MODELING.md); each still needs a tested worked example.
-- **More standard parts.** Gears, pulleys, linear rails, servo motors; threads as real helices on request.
-- **Printer hand-off.** Sending G-code to a printer (OctoPrint, PrusaLink, Bambu LAN) needs printer credentials; today `img2cad slice` stops at the file.
+- **Full sheet-metal unfolding.** `flat_blank` handles bends about one axis and does not place holes; multi-axis parts need a real unfolder.
+- **Joint guessing.** `img2cad urdf` needs a joints file; proposing joints from coaxial contacts would save a step.
+- **Real printers.** `img2cad send` is tested against a local stand-in server; Bambu is untested on hardware.

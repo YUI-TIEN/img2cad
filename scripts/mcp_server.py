@@ -28,6 +28,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 PROTOCOL_VERSION = "2025-06-18"
+# `send` is left out on purpose: starting a physical print stays a shell command the user sees.
 RUNNABLE = ("workflow", "build", "camera", "hull", "mask", "params", "trace", "inspect", "export", "review", "drawing", "printcheck", "dfm", "slice", "parts", "urdf", "doctor", "version")
 MAX_OUTPUT = 60_000
 

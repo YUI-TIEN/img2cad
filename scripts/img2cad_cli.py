@@ -35,10 +35,11 @@ COMMANDS = {
     "mcp": ("mcp_server.py", "run the img2cad MCP server (stdio) for agent hosts"),
     "drawing": ("drawing.py", "engineering drawing (SVG + DXF) with three views and overall dimensions from a STEP file"),
     "printcheck": ("printcheck.py", "3D-printability check of a STEP/STL: watertight, overhangs, thin features, build volume"),
-    "dfm": ("dfm.py", "CNC milling / sheet-metal manufacturability checks on a STEP: internal corners, tool radii, deep holes, undercuts, thickness, bends"),
+    "dfm": ("dfm.py", "CNC milling / sheet-metal manufacturability checks on a STEP: internal corners, tool radii, deep holes, setups, thickness, bends, flat blank"),
     "slice": ("slice.py", "slice STL/3MF to G-code with an installed PrusaSlicer, SuperSlicer, OrcaSlicer or Bambu Studio"),
-    "parts": ("std_parts.py", "standard parts as STEP: ISO screws, nuts, washers, bearings, NEMA 17 motor, 2020 extrusion"),
-    "urdf": ("urdf_export.py", "robot description (URDF + meshes) from a coloured STEP assembly, with joints and exact inertia"),
+    "send": ("send_print.py", "upload G-code to OctoPrint, PrusaLink, Moonraker (Klipper) or a Bambu printer on the LAN; --start prints"),
+    "parts": ("std_parts.py", "standard parts as STEP: ISO screws (optionally threaded), nuts, washers, bearings, gears, GT2 pulleys, MGN rails, servos, NEMA 17, 2020 extrusion"),
+    "urdf": ("urdf_export.py", "robot description (URDF, SDF or MuJoCo MJCF + meshes) from a coloured STEP assembly, with joints and exact inertia"),
 }
 
 

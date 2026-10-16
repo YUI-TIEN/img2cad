@@ -1,6 +1,6 @@
 ---
 name: cad-output
-description: Turn a finished STEP model into deliverables - interactive 3D view, GLB/STL/3MF meshes, a dimensioned engineering drawing (SVG/DXF/PDF), a 3D-printability report, slicing to G-code, CNC/sheet-metal DFM checks, standard parts (screws, bearings, motors, extrusion) and URDF for robots. Use after img2cad produced a model, or for any STEP the user supplies.
+description: Turn a finished STEP model into deliverables - interactive 3D view, GLB/STL/3MF meshes, a dimensioned engineering drawing (SVG/DXF/PDF), a 3D-printability report, slicing and sending to a printer, CNC/sheet-metal DFM checks with flat blanks, standard parts (screws, bearings, gears, pulleys, rails, servos, motors, extrusion) and URDF/SDF/MJCF for robots. Use after img2cad produced a model, or for any STEP the user supplies.
 ---
 
 # cad-output — view, export, draw, and print-check a CAD model
@@ -78,7 +78,18 @@ img2cad slice model.stl --out part.gcode --config my_printer.ini                
 img2cad slice model.3mf --out plate.3mf --slicer orca --settings machine.json,process.json,filament.json
 ```
 
-Runs the slicer the user already has, in command-line mode, and reports estimated time and filament. Without a profile the slicer's defaults apply, which rarely match the printer: ask for the user's profile. If no slicer is installed the command says so; then hand over `model.3mf` (opens in Bambu Studio, OrcaSlicer, PrusaSlicer, Cura). Do not claim the part was printed: sending the job stays with the user.
+Runs the slicer the user already has, in command-line mode, and reports estimated time and filament. Without a profile the slicer's defaults apply, which rarely match the printer: ask for the user's profile. If no slicer is installed the command says so; then hand over `model.3mf` (opens in Bambu Studio, OrcaSlicer, PrusaSlicer, Cura).
+
+## Send to a printer
+
+```sh
+export IMG2CAD_PRINTER_KEY=...        # API key (OctoPrint, PrusaLink, Moonraker) or Bambu LAN access code
+img2cad send model.gcode --printer octoprint --host 192.168.1.20               # upload only
+img2cad send model.gcode --printer moonraker --host klipper.local --start       # upload and print
+img2cad send plate.gcode.3mf --printer bambu --host 192.168.1.30 --serial SN --start   # needs paho-mqtt for --start
+```
+
+Upload is the default. **Only pass `--start` when the user asked to start the print in this conversation**, after they confirmed the plate is clear and the right filament is loaded: a print is a physical action nobody may be watching. Never put the key on the command line or in a file; read it from the environment. Bambu needs LAN mode and a sliced `.gcode.3mf`.
 
 ## CNC and sheet-metal checks
 
@@ -87,7 +98,7 @@ img2cad dfm part.step --process cnc --tool-radius 1.5     # 3-axis, tool along Z
 img2cad dfm bracket.step --process sheet [--thickness 2]
 ```
 
-Orient the part as it will be fixtured (Z = spindle). Every check has `pass`/`warn`/`fail` and evidence locations in model mm (exit 1 on fail). CNC: `sharp_internal_corners` (add a radius ≥ tool radius or dog-bones), `small_internal_radii`, `deep_holes` (> 4× warn, > 10× fail), `tiny_holes`, `undercut_faces` (need another setup). Sheet: `uniform_thickness`, `small_holes` (< thickness), `tight_bends` (inside radius < thickness). The rules are common shop guidance; report warnings as questions for the maker.
+Orient the part as it will be fixtured (Z = spindle). Every check has `pass`/`warn`/`fail` and evidence locations in model mm (exit 1 on fail). CNC: `sharp_internal_corners` (add a radius ≥ tool radius or dog-bones), `small_internal_radii`, `deep_holes` (> 4× warn, > 10× fail), `tiny_holes`, `undercut_faces` (need another setup), `setups` (the fewest ±X/±Y/±Z setups that reach every face and hole; ignores fixturing and occlusion). Sheet: `uniform_thickness`, `small_holes` (< thickness), `tight_bends` (inside radius < thickness), `hole_to_bend` (< 2 × thickness + radius), `flat_blank` (for bends about one axis: blank length × width with `--k-factor`, default 0.44, and each bend's angle, allowance and deduction; holes are not unfolded, so place them from the 3D model). The rules are common shop guidance; report warnings as questions for the maker.
 
 ## Standard parts
 
@@ -96,12 +107,18 @@ img2cad parts list
 img2cad parts make screw --size M3 --length 12 --out m3x12.step
 ```
 
-In `model.py`, `from std_parts import socket_head_screw, hex_nut, washer, ball_bearing, nema17, extrusion_2020` (the worker puts the scripts directory on the path). Nominal ISO dimensions; threads are plain cylinders, bearings solid rings. Each part sits on z = 0 (a screw's head on top, shank down), has a label and a colour, so it shows up as its own part in STEP, 3MF and the drawing. Use them for fit checks and assemblies instead of modelling fasteners by eye.
+```sh
+img2cad parts make gear --module 1.5 --teeth 30 --width 8 --bore 8 --out gear.step
+img2cad parts make screw --size M4 --length 16 --threads --out m4.step
+img2cad parts make rail --size MGN12 --length 300 --out rail.step
+```
+
+In `model.py`, `from std_parts import socket_head_screw, hex_nut, washer, ball_bearing, spur_gear, gt2_pulley, mgn_rail, servo, nema17, extrusion_2020` (the worker puts the scripts directory on the path). Nominal dimensions: ISO 4762/4032/7089/15, ISO 53 involute gears (pitch diameter = module × teeth, so two gears mesh at (z1 + z2) × m / 2 apart), GT2 2 mm pitch, MGN rails, SG90/MG996R servos. Threads are plain cylinders unless `threads=True` (a real ISO helix; slower), bearings are solid rings. Each part sits on z = 0 (a screw's head on top, shank down), has a label and a colour, so it shows up as its own part in STEP, 3MF and the drawing. Use them for fit checks and assemblies instead of modelling fasteners by eye.
 
 ## Robot description (URDF)
 
 ```sh
-img2cad urdf model.step --out robot/ [--joints joints.json] [--density 2.7e-6]
+img2cad urdf model.step --out robot/ [--joints joints.json] [--density 2.7e-6] [--format urdf|sdf|mjcf]
 ```
 
-One link per labelled part (`meshes/<link>.stl`, colour, mass from volume × density in kg/mm³, centre of mass and inertia from the B-rep). `joints.json` lists `{"name", "type": fixed|revolute|continuous|prismatic, "parent", "child", "origin": [x, y, z] mm in the model frame, "axis", "limit"}`; parts it omits are fixed to the root (the largest part, or `"root"`). The robot appears as modelled at zero joint angles. Model each moving body as its own labelled part.
+One link per labelled part (`meshes/<link>.stl`, colour, mass from volume × density in kg/mm³, centre of mass and inertia from the B-rep). `joints.json` lists `{"name", "type": fixed|revolute|continuous|prismatic, "parent", "child", "origin": [x, y, z] mm in the model frame, "axis", "limit"}`; parts it omits are fixed to the root (the largest part, or `"root"`). The robot appears as modelled at zero joint angles. `--format sdf` writes SDFormat 1.9 for Gazebo, `--format mjcf` a MuJoCo model (bodies nested along the joint tree). Model each moving body as its own labelled part.

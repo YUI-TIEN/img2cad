@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""Standard parts: fasteners, bearings, a stepper motor and aluminium extrusion.
+"""Standard parts: fasteners, bearings, gears, pulleys, rails, motors, servos, extrusion.
 
     img2cad parts list
     img2cad parts make screw --size M3 --length 12 --out m3x12.step
     img2cad parts make bearing --size 608 --out 608.step
+    img2cad parts make gear --module 1 --teeth 24 --width 6 --bore 5 --out gear.step
+    img2cad parts make screw --size M3 --length 12 --threads --out m3x12_threaded.step
 
 Or from model.py (the worker puts this directory on sys.path):
 
     from std_parts import socket_head_screw, hex_nut, washer, ball_bearing, nema17, extrusion_2020
+    from std_parts import spur_gear, gt2_pulley, mgn_rail, servo
     screw = Pos(0, 0, 6) * socket_head_screw("M3", 12)
 
 Dimensions follow the standards' nominal values (ISO 4762 socket head cap
 screws, ISO 4032 hex nuts, ISO 7089 washers, ISO 15 deep-groove bearings,
-NEMA 17 frame, 20 mm T-slot extrusion). Threads are plain cylinders at the
-nominal diameter; bearings are solid rings (no balls). Good for fit checks,
+NEMA 17 frame, 20 mm T-slot extrusion, ISO 53 involute spur gears, GT2
+pulleys, MGN miniature rails, SG90 / MG996R hobby servos). Threads are plain
+cylinders at the nominal diameter unless you ask for `threads=True` (a real
+ISO metric helix: slower, use it for close-ups and prints, not big
+assemblies); bearings are solid rings (no balls). Good for fit checks,
 assemblies and drawings, not for manufacturing the part itself. Every part
 sits with its mounting face on z = 0 (screws hang down from their head).
 """
@@ -25,8 +31,8 @@ import json
 import math
 from pathlib import Path
 
-from build123d import (Align, Box, Color, Compound, Cylinder, Location, Plane, Pos, RegularPolygon, Rot, Sketch, export_step,
-                       extrude, Rectangle)
+from build123d import (Align, Box, Color, Compound, Cylinder, Helix, Plane, Polygon, Polyline, Pos, RegularPolygon, Rot, Sketch,
+                       export_step, extrude, make_face, Rectangle, sweep)
 
 STEEL = Color(0.72, 0.73, 0.75)
 BLACK_OXIDE = Color(0.16, 0.16, 0.17)
@@ -36,6 +42,8 @@ MOTOR_BLACK = Color(0.10, 0.10, 0.11)
 # ISO 4762: size -> (thread d, head diameter dk, head height k, hex key s)
 SCREWS = {"M2": (2, 3.8, 2, 1.5), "M2.5": (2.5, 4.5, 2.5, 2), "M3": (3, 5.5, 3, 2.5), "M4": (4, 7, 4, 3),
           "M5": (5, 8.5, 5, 4), "M6": (6, 10, 6, 5), "M8": (8, 13, 8, 6), "M10": (10, 16, 10, 8), "M12": (12, 18, 12, 10)}
+# ISO 261 coarse pitch
+PITCH = {"M2": 0.4, "M2.5": 0.45, "M3": 0.5, "M4": 0.7, "M5": 0.8, "M6": 1.0, "M8": 1.25, "M10": 1.5, "M12": 1.75}
 # ISO 4032: size -> (thread d, across flats s, height m)
 NUTS = {"M2": (2, 4, 1.6), "M2.5": (2.5, 5, 2), "M3": (3, 5.5, 2.4), "M4": (4, 7, 3.2), "M5": (5, 8, 4.7),
         "M6": (6, 10, 5.2), "M8": (8, 13, 6.8), "M10": (10, 16, 8.4), "M12": (12, 18, 10.8)}
@@ -53,12 +61,26 @@ def _labelled(shape, label: str, color: Color):
     return shape
 
 
-def socket_head_screw(size: str, length: float):
+def threaded_rod(diameter: float, pitch: float, length: float):
+    """External ISO metric thread from z = 0 up to z = length (core plus a swept 60-degree helix)."""
+    h = 0.5413 * pitch  # thread depth (5/8 of the fundamental triangle height)
+    core = diameter / 2 - h
+    turns = Helix(pitch, length - pitch, core, center=(0, 0, pitch / 2))
+    profile = Plane.XZ * Polygon((core - 0.05 * pitch, -0.42 * pitch), (diameter / 2, -0.06 * pitch), (diameter / 2, 0.06 * pitch),
+                                 (core - 0.05 * pitch, 0.42 * pitch), align=None)
+    profile = Pos(0, 0, pitch / 2) * profile
+    return Cylinder(core, length, align=(Align.CENTER, Align.CENTER, Align.MIN)) + sweep(profile, turns, is_frenet=True)
+
+
+def socket_head_screw(size: str, length: float, threads: bool = False):
     """ISO 4762 socket head cap screw; head on top of z = 0, shank down to z = -length."""
     d, dk, k, s = SCREWS[size]
     head = Cylinder(dk / 2, k, align=(Align.CENTER, Align.CENTER, Align.MIN))
     socket = Pos(0, 0, k - 0.6 * k) * extrude(Sketch() + RegularPolygon(s / math.sqrt(3), 6), amount=0.6 * k + 0.01)
-    shank = Cylinder(d / 2, length, align=(Align.CENTER, Align.CENTER, Align.MAX))
+    if threads:
+        shank = Pos(0, 0, -length) * threaded_rod(d, PITCH[size], length)
+    else:
+        shank = Cylinder(d / 2, length, align=(Align.CENTER, Align.CENTER, Align.MAX))
     return _labelled((head - socket) + shank, f"{size}x{length:g} socket head screw", BLACK_OXIDE)
 
 
@@ -108,6 +130,90 @@ def extrusion_2020(length: float):
     return _labelled(extrude(profile, amount=length), f"2020 extrusion {length:g} mm", ALUMINIUM)
 
 
+def _involute_outline(module: float, teeth: int, pressure_deg: float = 20.0, points: int = 8) -> list[tuple[float, float]]:
+    pitch_r = module * teeth / 2
+    base_r = pitch_r * math.cos(math.radians(pressure_deg))
+    tip_r, root_r = pitch_r + module, pitch_r - 1.25 * module
+
+    def inv(r: float) -> float:
+        t = math.sqrt(max((r / base_r) ** 2 - 1, 0.0))
+        return t - math.atan(t)
+
+    half = math.pi / (2 * teeth) + inv(pitch_r)  # half tooth angle at the base circle
+    start = max(base_r, root_r)
+    radii = [start + (tip_r - start) * i / points for i in range(points + 1)]
+    flank = [(r, half - inv(r)) for r in radii]
+    if root_r < base_r:
+        flank.insert(0, (root_r, half))
+    outline = []
+    for k in range(teeth):
+        centre = 2 * math.pi * k / teeth
+        right = [(r * math.cos(centre - a), r * math.sin(centre - a)) for r, a in flank]
+        left = [(r * math.cos(centre + a), r * math.sin(centre + a)) for r, a in reversed(flank)]
+        outline += right + left
+    return outline
+
+
+def spur_gear(module: float, teeth: int, width: float, bore: float = 0.0, pressure_deg: float = 20.0):
+    """ISO 53 involute spur gear (no profile shift), centred on the Z axis from z = 0 up; pitch diameter = module x teeth."""
+    if teeth < 6:
+        raise ValueError("a spur gear needs at least 6 teeth")
+    face = make_face(Polyline(*_involute_outline(module, teeth, pressure_deg), close=True))
+    gear = extrude(face, amount=width)
+    if bore:
+        gear -= Cylinder(bore / 2, width, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    return _labelled(gear, f"spur gear m{module:g} z{teeth}", STEEL)
+
+
+def gt2_pulley(teeth: int = 20, width: float = 6.0, bore: float = 5.0):
+    """GT2 (2 mm pitch) timing pulley with flanges and a hub, from z = 0 up: hub, flange, toothed section, flange."""
+    pitch_d = teeth * 2.0 / math.pi
+    outer_r = pitch_d / 2 - 0.254
+    hub_h, flange_t = 7.0, 1.0
+    hub = Cylinder(max(outer_r + 1.5, bore / 2 + 3), hub_h, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    flange = Cylinder(outer_r + 2.0, flange_t, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    teeth_body = Cylinder(outer_r, width, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    for k in range(teeth):
+        angle = 360 * k / teeth
+        teeth_body -= Rot(0, 0, angle) * Pos(outer_r + 0.15, 0, 0) * Cylinder(0.55, width, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    pulley = hub + Pos(0, 0, hub_h) * flange + Pos(0, 0, hub_h + flange_t) * teeth_body + Pos(0, 0, hub_h + flange_t + width) * flange
+    pulley -= Cylinder(bore / 2, hub_h + 2 * flange_t + width, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    return _labelled(pulley, f"GT2 {teeth}T pulley", ALUMINIUM)
+
+
+# MGN miniature rail: size -> (rail width, rail height, hole pitch, carriage width, carriage length (H), height rail bottom -> carriage top)
+RAILS = {"MGN7": (7, 5, 15, 17, 30.8, 8), "MGN9": (9, 6, 20, 20, 39.9, 10), "MGN12": (12, 8, 25, 27, 45.4, 13), "MGN15": (15, 10, 40, 32, 58.8, 16)}
+
+
+def mgn_rail(size: str = "MGN12", length: float = 200.0):
+    """MGN linear rail along X (bottom on z = 0, centred) with one H carriage in the middle; two labelled parts."""
+    rw, rh, pitch, cw, cl, top = RAILS[size]
+    rail = Box(length, rw, rh, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    count = int(length // pitch)
+    for i in range(count):
+        x = -((count - 1) * pitch) / 2 + i * pitch
+        rail -= Pos(x, 0, 0) * Cylinder(rw * 0.18, rh, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    carriage = Pos(0, 0, rh * 0.45) * Box(cl, cw, top - rh * 0.45, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    carriage -= Box(cl, rw + 0.4, rh * 0.55 + 0.2, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    return Compound(children=[_labelled(rail, f"{size} rail {length:g} mm", STEEL), _labelled(carriage, f"{size}H carriage", STEEL)])
+
+
+# hobby servo: (body L, W, H, flange length, flange thickness, flange top height, shaft offset from body centre, horn spline d)
+SERVOS = {"SG90": (22.8, 12.2, 22.7, 32.2, 2.5, 18.0, 5.9, 4.8), "MG996R": (40.7, 19.7, 37.0, 54.0, 2.8, 29.0, 10.2, 5.8)}
+
+
+def servo(model: str = "SG90"):
+    """Hobby servo body (bottom on z = 0, long side along X) with mounting flanges and the output spline on top."""
+    length, width, height, flange_l, flange_t, flange_top, shaft_dx, spline = SERVOS[model]
+    body = Box(length, width, height, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    flange = Pos(0, 0, flange_top - flange_t) * Box(flange_l, width, flange_t, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    for x in (-(flange_l + length) / 4, (flange_l + length) / 4):
+        flange -= Pos(x, 0, 0) * Cylinder(1.0, 100)
+    boss = Pos(-length / 2 + shaft_dx, 0, height) * Cylinder(width / 2 * 0.95, 4, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    shaft = Pos(-length / 2 + shaft_dx, 0, height + 4) * Cylinder(spline / 2, 3, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    return Compound(children=[_labelled(body + flange + boss, f"{model} servo", MOTOR_BLACK), _labelled(shaft, f"{model} output spline", Color(0.95, 0.95, 0.95))])
+
+
 CATALOG = {
     "screw": ("ISO 4762 socket head cap screw", sorted(SCREWS, key=lambda s: SCREWS[s][0]), "needs --length"),
     "nut": ("ISO 4032 hex nut", sorted(NUTS, key=lambda s: NUTS[s][0]), ""),
@@ -115,14 +221,27 @@ CATALOG = {
     "bearing": ("ISO 15 deep-groove ball bearing", sorted(BEARINGS, key=lambda s: BEARINGS[s][1]), ""),
     "nema17": ("NEMA 17 stepper motor", [], "--length = body length (default 40)"),
     "extrusion2020": ("20x20 T-slot extrusion", [], "needs --length"),
+    "gear": ("ISO 53 involute spur gear", [], "--module, --teeth, --width, --bore"),
+    "pulley": ("GT2 timing pulley", [], "--teeth (default 20), --width (6), --bore (5)"),
+    "rail": ("MGN linear rail + H carriage", sorted(RAILS, key=lambda s: RAILS[s][0]), "--length (default 200)"),
+    "servo": ("hobby servo", sorted(SERVOS), ""),
 }
 
 
-def make(kind: str, size: str | None = None, length: float | None = None):
+def make(kind: str, size: str | None = None, length: float | None = None, threads: bool = False, module: float = 1.0,
+         teeth: int | None = None, width: float | None = None, bore: float | None = None):
     if kind == "screw":
         if length is None:
             raise ValueError("screw needs --length")
-        return socket_head_screw(size or "M3", length)
+        return socket_head_screw(size or "M3", length, threads)
+    if kind == "gear":
+        return spur_gear(module, teeth or 20, width or 6.0, bore or 0.0)
+    if kind == "pulley":
+        return gt2_pulley(teeth or 20, width or 6.0, 5.0 if bore is None else bore)
+    if kind == "rail":
+        return mgn_rail(size or "MGN12", length or 200.0)
+    if kind == "servo":
+        return servo(size or "SG90")
     if kind == "nut":
         return hex_nut(size or "M3")
     if kind == "washer":
@@ -145,14 +264,19 @@ def main() -> int:
     build = commands.add_parser("make", help="write one part as STEP")
     build.add_argument("kind", choices=list(CATALOG))
     build.add_argument("--size", help="M3, 608, ... (see list)")
-    build.add_argument("--length", type=float, help="screw / extrusion length or motor body length, mm")
+    build.add_argument("--length", type=float, help="screw / extrusion / rail length or motor body length, mm")
+    build.add_argument("--threads", action="store_true", help="screw: model the ISO thread helix")
+    build.add_argument("--module", type=float, default=1.0, help="gear module, mm")
+    build.add_argument("--teeth", type=int, help="gear / pulley teeth")
+    build.add_argument("--width", type=float, help="gear / pulley face width, mm")
+    build.add_argument("--bore", type=float, help="gear / pulley bore diameter, mm")
     build.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "list":
         print(json.dumps({kind: {"standard": standard, "sizes": sizes, "note": note} for kind, (standard, sizes, note) in CATALOG.items()}, indent=2))
         return 0
     try:
-        part = make(args.kind, args.size, args.length)
+        part = make(args.kind, args.size, args.length, args.threads, args.module, args.teeth, args.width, args.bore)
     except (KeyError, ValueError) as error:
         parser.error(f"{error}")
     args.out.parent.mkdir(parents=True, exist_ok=True)
