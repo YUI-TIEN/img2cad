@@ -242,23 +242,44 @@ _HULL_PLANES = {
 }
 
 
+def _silhouette_solid(outline_mm, right, toward, reach: float, distance: float | None):
+    """The region of space that images inside `outline_mm` (screen mm at the origin's depth)."""
+    def section(offset: float):
+        factor = 1.0 if distance is None else (distance - offset) / distance
+        plane = Plane(origin=tuple(offset * value for value in toward), x_dir=tuple(right), z_dir=tuple(toward))
+        return plane * Polygon(*[(a * factor, b * factor) for a, b in outline_mm], align=None)
+
+    if distance is None:
+        return extrude(section(0.0), amount=reach, both=True)
+    reach = min(reach, 0.95 * distance)
+    return loft([section(reach), section(-reach)])  # pixel rays fan out from the camera
+
+
 def visual_hull(views: Sequence[dict]):
-    """Intersection of silhouettes extruded through the model (a blockout).
+    """Intersection of silhouettes projected through the model (a blockout).
 
     Each view is {"view": "front"|"right"|"top", "outline_mm": [[right, up], ...]}
-    in that view's screen millimetres (see scripts/visual_hull.py). The result
-    contains the object but fills every concavity no view sees.
+    for the standard orthographic panels, or {"frame": {...}, "outline_mm": ...}
+    for a photo from any angle, where frame holds an ImageFrame's view, roll
+    and distance (as written by `img2cad camera`). outline_mm is in that view's
+    screen millimetres at the origin's depth (see scripts/visual_hull.py). The
+    result contains the object but fills every concavity no view sees.
     """
     if len(views) < 2:
         raise ValueError("a visual hull needs at least two views")
     reach = 4 * max(abs(value) for view in views for point in view["outline_mm"] for value in point) + 1
     hull = None
     for view in views:
-        right, _, toward = _HULL_PLANES[view["view"]]
-        plane = Plane(origin=(0, 0, 0), x_dir=right, z_dir=toward)
-        prism = extrude(plane * Polygon(*[tuple(p) for p in view["outline_mm"]], align=None), amount=reach, both=True)
-        hull = prism if hull is None else hull & prism
+        if "frame" in view:
+            frame = view["frame"]
+            right, _, toward = camera_basis(frame.get("view", (0, -1, 0)), frame.get("roll", 0.0))
+            distance = frame.get("distance")
+        else:
+            right, _, toward = _HULL_PLANES[view["view"]]
+            distance = None
+        solid = _silhouette_solid(view["outline_mm"], right, toward, reach, distance)
+        hull = solid if hull is None else hull & solid
     solids = hull.solids()
     if not solids:
-        raise ValueError("the silhouettes do not overlap; check each view's origin_px and mm_per_px")
+        raise ValueError("the silhouettes do not overlap; check each view's registration")
     return max(solids, key=lambda solid: solid.volume) if len(solids) > 1 else solids[0]
