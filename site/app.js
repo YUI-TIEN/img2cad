@@ -29,6 +29,58 @@ document.querySelectorAll(".tabs button").forEach((button) => {
   });
 });
 
+// ---------- copy the visible prompt or install snippet ----------
+const copyText = {
+  en: { copy: "Copy", copied: "Copied!", failed: "Press Ctrl/Cmd+C", prompt: "prompt", command: "install commands" },
+  zh: { copy: "複製", copied: "已複製！", failed: "按 Ctrl/Cmd+C", prompt: "提示詞", command: "安裝指令" },
+};
+
+document.querySelectorAll(".onboarding pre.prompt, .tab-panels pre[data-panel]").forEach((block) => {
+  const code = block.querySelector("code");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "copy-button";
+  button.setAttribute("aria-live", "polite");
+  const kind = block.classList.contains("prompt") ? "prompt" : "command";
+  let resetTimer;
+  const label = (state = "copy") => {
+    const words = copyText[lang] || copyText.en;
+    button.textContent = words[state];
+    button.setAttribute("aria-label", `${words[state]} ${words[kind]}`);
+    button.dataset.state = state;
+  };
+  label();
+  button.addEventListener("click", async () => {
+    clearTimeout(resetTimer);
+    const value = code.textContent.trim();
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      await navigator.clipboard.writeText(value);
+      label("copied");
+    } catch {
+      // Older browsers may only support the legacy copy command.
+      const range = document.createRange();
+      range.selectNodeContents(code);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      if (document.execCommand("copy")) {
+        selection.removeAllRanges();
+        label("copied");
+      } else {
+        // Keep the exact snippet selected so the user can copy it manually.
+        label("failed");
+      }
+    }
+    resetTimer = setTimeout(() => label(), 2400);
+  });
+  block.appendChild(button);
+  document.getElementById("lang").addEventListener("click", () => {
+    clearTimeout(resetTimer);
+    label();
+  });
+});
+
 // ---------- 3D viewers (lazy, one renderer per visible card) ----------
 const loader = new GLTFLoader();
 const viewers = new Map();
