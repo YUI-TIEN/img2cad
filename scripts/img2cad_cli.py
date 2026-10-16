@@ -24,7 +24,7 @@ COMMANDS = {
     "workflow": ("agent_workflow.py", "staged, resumable image -> CAD workflow (init, observations, plan, preview, source-review, run, review, new-revision, promote, status)"),
     "build": ("run_agent_cad.py", "build one model.py: STEP + GLB/STL/3MF, checks, previews, comparison and registered overlay"),
     "camera": ("camera_fit.py", "fit the photo's camera (IMAGE_FRAME) to known circles/points; refuses when the fit is poor or under-constrained"),
-    "hull": ("visual_hull.py", "starting body from 2-3 silhouettes (front/right/top masks): their extrusions intersected"),
+    "hull": ("visual_hull.py", "starting body from 2+ silhouettes (front/right/top or photos at any angle with fitted cameras), intersected"),
     "mask": ("make_mask.py", "make a subject mask from polygons, ellipses and colour seeds"),
     "trace": ("trace_regions.py", "trace colour regions of a reference image into pixel outlines"),
     "inspect": ("inspect_step.py", "measure a STEP file: validity, solids, parts and colours, bounds, volume, holes/bosses"),
@@ -35,6 +35,10 @@ COMMANDS = {
     "mcp": ("mcp_server.py", "run the img2cad MCP server (stdio) for agent hosts"),
     "drawing": ("drawing.py", "engineering drawing (SVG + DXF) with three views and overall dimensions from a STEP file"),
     "printcheck": ("printcheck.py", "3D-printability check of a STEP/STL: watertight, overhangs, thin features, build volume"),
+    "dfm": ("dfm.py", "CNC milling / sheet-metal manufacturability checks on a STEP: internal corners, tool radii, deep holes, undercuts, thickness, bends"),
+    "slice": ("slice.py", "slice STL/3MF to G-code with an installed PrusaSlicer, SuperSlicer, OrcaSlicer or Bambu Studio"),
+    "parts": ("std_parts.py", "standard parts as STEP: ISO screws, nuts, washers, bearings, NEMA 17 motor, 2020 extrusion"),
+    "urdf": ("urdf_export.py", "robot description (URDF + meshes) from a coloured STEP assembly, with joints and exact inertia"),
 }
 
 

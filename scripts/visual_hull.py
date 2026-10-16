@@ -16,6 +16,16 @@ Conventions match the comparison panels (Z up): `front` is seen from -Y
 (image right = +X, up = +Z), `right` from +X (right = +Y, up = +Z), `top`
 from +Z (right = +X, up = +Y). `origin_px` is where model (0, 0, 0) appears.
 
+Photos from any angle work too: instead of "view", give each one the camera
+fitted by `img2cad camera` (its fit.json, or the frame inline). All photos
+must share one model frame, so fit them against the same known features:
+
+    {"views": [
+      {"frame": "fit-a/fit.json", "mask": "a_mask.png"},
+      {"frame": {"mm_per_px": 0.3, "origin_px": [270, 240], "view": [0.5, -0.7, 0.5], "roll": 0, "distance": 600},
+       "mask": "b_mask.png"}
+    ]}
+
 Each silhouette is extruded straight through the model and the extrusions are
 intersected. The result contains the object but is larger wherever no view
 sees a concavity (a cup's hollow, the space between legs): it is a blockout,
@@ -67,12 +77,22 @@ def run(spec_path: Path, out_dir: Path, simplify_px: float = 1.0) -> dict[str, A
         raise ValueError("a visual hull needs at least two views")
     seen = set()
     outlines = []
-    for view in views:
+    for index, view in enumerate(views):
+        outline = outline_from_mask((spec_path.parent / view["mask"]).resolve(), simplify_px)
+        if "frame" in view:
+            frame = view["frame"]
+            if isinstance(frame, str):
+                frame = json.loads((spec_path.parent / frame).read_text(encoding="utf-8"))
+                frame = frame.get("frame", frame)  # accept img2cad camera's fit.json
+            mm = to_mm(outline, float(frame["mm_per_px"]), tuple(frame["origin_px"]))
+            outlines.append({"frame": {key: frame.get(key) for key in ("view", "roll", "distance")},
+                             "outline_mm": [[round(a, 3), round(b, 3)] for a, b in mm]})
+            seen.add(f"camera {index + 1}")
+            continue
         name = view.get("view")
         if name not in VIEWS or name in seen:
-            raise ValueError(f"each view must be one of {', '.join(VIEWS)}, at most once")
+            raise ValueError(f"each view must be one of {', '.join(VIEWS)} (at most once) or carry a fitted frame")
         seen.add(name)
-        outline = outline_from_mask((spec_path.parent / view["mask"]).resolve(), simplify_px)
         outlines.append({"view": name, "outline_mm": [[round(a, 3), round(b, 3)] for a, b in
                                                        to_mm(outline, float(view["mm_per_px"]), tuple(view["origin_px"]))]})
     hull = visual_hull(outlines)

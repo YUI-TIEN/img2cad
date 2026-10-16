@@ -43,6 +43,41 @@ class VisualHullTests(unittest.TestCase):
             for name in ("hull.step", "outlines.json", "model_hull.py"):
                 self.assertTrue((root / "out" / name).is_file(), name)
 
+    def test_sphere_from_three_fitted_cameras_at_odd_angles(self) -> None:
+        import numpy as np
+        from scipy.spatial import ConvexHull
+
+        import visual_hull
+        from img2cad_lib import ImageFrame
+
+        # Truth: a sphere of radius 20 at the origin, seen by three cameras (one with perspective).
+        cameras = [
+            {"mm_per_px": 0.25, "origin_px": [200, 200], "view": [0.6, -0.7, 0.4], "roll": 0.0, "distance": None},
+            {"mm_per_px": 0.25, "origin_px": [200, 200], "view": [-0.8, -0.3, 0.5], "roll": 5.0, "distance": 400.0},
+            {"mm_per_px": 0.25, "origin_px": [200, 200], "view": [0.1, 0.4, 0.9], "roll": 0.0, "distance": None},
+        ]
+        u, v = np.meshgrid(np.linspace(0, 2 * np.pi, 60), np.linspace(0, np.pi, 30))
+        surface = np.stack([20 * np.cos(u) * np.sin(v), 20 * np.sin(u) * np.sin(v), 20 * np.cos(v)], -1).reshape(-1, 3)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            views = []
+            for index, cam in enumerate(cameras):
+                frame = ImageFrame(mm_per_px=cam["mm_per_px"], origin_px=tuple(cam["origin_px"]), view=tuple(cam["view"]), roll=cam["roll"], distance=cam["distance"])
+                pixels = np.array([frame.project(*p) for p in surface])
+                outline = pixels[ConvexHull(pixels).vertices]
+                mask = Image.new("L", (400, 400), 0)
+                ImageDraw.Draw(mask).polygon([tuple(p) for p in outline], fill=255)
+                mask.save(root / f"m{index}.png")
+                (root / f"fit{index}.json").write_text(json.dumps({"frame": cam}), encoding="utf-8")
+                views.append({"frame": f"fit{index}.json", "mask": f"m{index}.png"})
+            (root / "views.json").write_text(json.dumps({"views": views}), encoding="utf-8")
+            report = visual_hull.run(root / "views.json", root / "out")
+            sphere = 4 / 3 * math.pi * 20 ** 3
+            self.assertGreater(report["volume_mm3"], 0.98 * sphere)   # contains the sphere
+            self.assertLess(report["volume_mm3"], 1.6 * sphere)       # three views already carve most of the box away
+            for size in report["size_mm"]:
+                self.assertTrue(40 * 0.98 < size < 40 * 1.3, report["size_mm"])  # corners no camera trims stay
+
 
 if __name__ == "__main__":
     unittest.main()

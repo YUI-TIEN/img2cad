@@ -1,6 +1,6 @@
 ---
 name: cad-output
-description: Turn a finished STEP model into deliverables - interactive 3D view, GLB/STL/3MF meshes, a dimensioned engineering drawing (SVG/DXF), and a 3D-printability report. Use after img2cad produced a model, or for any STEP the user supplies.
+description: Turn a finished STEP model into deliverables - interactive 3D view, GLB/STL/3MF meshes, a dimensioned engineering drawing (SVG/DXF/PDF), a 3D-printability report, slicing to G-code, CNC/sheet-metal DFM checks, standard parts (screws, bearings, motors, extrusion) and URDF for robots. Use after img2cad produced a model, or for any STEP the user supplies.
 ---
 
 # cad-output — view, export, draw, and print-check a CAD model
@@ -69,3 +69,39 @@ Orient the model as it will print (Z up, bed at the lowest point). The report gi
 - `thin_walls` — sampled wall thickness under `--min-wall`.
 
 Visual-approximation models usually warn: organic undersides overhang, and projected paint decals (`projected_decal`) are deliberately about 0.5 mm thick. For a print, either thicken the paint (`depth=`), print it as a separate colour (3MF keeps parts), or drop it; add a flat base by cutting the bottom (`part.cut(Pos(0, 0, z0 - big / 2) * Box(big, big, big))`). Report warnings to the user rather than claiming a model is print-ready.
+
+## Slice for printing
+
+```sh
+img2cad slice model.3mf --out model.gcode [--slicer prusa|superslicer|orca|bambu] [--slicer-path PATH]
+img2cad slice model.stl --out part.gcode --config my_printer.ini                       # Prusa/SuperSlicer profile
+img2cad slice model.3mf --out plate.3mf --slicer orca --settings machine.json,process.json,filament.json
+```
+
+Runs the slicer the user already has, in command-line mode, and reports estimated time and filament. Without a profile the slicer's defaults apply, which rarely match the printer: ask for the user's profile. If no slicer is installed the command says so; then hand over `model.3mf` (opens in Bambu Studio, OrcaSlicer, PrusaSlicer, Cura). Do not claim the part was printed: sending the job stays with the user.
+
+## CNC and sheet-metal checks
+
+```sh
+img2cad dfm part.step --process cnc --tool-radius 1.5     # 3-axis, tool along Z, machined from +Z
+img2cad dfm bracket.step --process sheet [--thickness 2]
+```
+
+Orient the part as it will be fixtured (Z = spindle). Every check has `pass`/`warn`/`fail` and evidence locations in model mm (exit 1 on fail). CNC: `sharp_internal_corners` (add a radius ≥ tool radius or dog-bones), `small_internal_radii`, `deep_holes` (> 4× warn, > 10× fail), `tiny_holes`, `undercut_faces` (need another setup). Sheet: `uniform_thickness`, `small_holes` (< thickness), `tight_bends` (inside radius < thickness). The rules are common shop guidance; report warnings as questions for the maker.
+
+## Standard parts
+
+```sh
+img2cad parts list
+img2cad parts make screw --size M3 --length 12 --out m3x12.step
+```
+
+In `model.py`, `from std_parts import socket_head_screw, hex_nut, washer, ball_bearing, nema17, extrusion_2020` (the worker puts the scripts directory on the path). Nominal ISO dimensions; threads are plain cylinders, bearings solid rings. Each part sits on z = 0 (a screw's head on top, shank down), has a label and a colour, so it shows up as its own part in STEP, 3MF and the drawing. Use them for fit checks and assemblies instead of modelling fasteners by eye.
+
+## Robot description (URDF)
+
+```sh
+img2cad urdf model.step --out robot/ [--joints joints.json] [--density 2.7e-6]
+```
+
+One link per labelled part (`meshes/<link>.stl`, colour, mass from volume × density in kg/mm³, centre of mass and inertia from the B-rep). `joints.json` lists `{"name", "type": fixed|revolute|continuous|prismatic, "parent", "child", "origin": [x, y, z] mm in the model frame, "axis", "limit"}`; parts it omits are fixed to the root (the largest part, or `"root"`). The robot appears as modelled at zero joint angles. Model each moving body as its own labelled part.

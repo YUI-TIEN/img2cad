@@ -2,6 +2,16 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.13.0
+
+- **SAM 2 masks.** `img2cad mask --sam --point x,y [--negative x,y] [--box x0,y0,x1,y1]` adds Meta's SAM 2 segmentation (optional extra: `pip install "img2cad[sam]"`). Without it, `--sam` fails with the install hint; the polygon/seed tools are unchanged.
+- **Visual hull from photos at any angle.** `img2cad hull` views may carry a fitted camera (`"frame"`: an `img2cad camera` fit.json or the frame inline) instead of front/right/top. Perspective cameras extrude a silhouette cone, not a prism.
+- **`img2cad parts`.** Standard parts as build123d solids or STEP: ISO 4762 screws, ISO 4032 nuts, ISO 7089 washers, ISO 15 bearings, NEMA 17 motor, 2020 extrusion.
+- **`img2cad urdf`.** URDF plus STL meshes from a coloured STEP assembly: one link per part, joints from `joints.json`, exact mass, centre of mass and inertia from the B-rep.
+- **`img2cad dfm`.** CNC (sharp internal corners, radii under the tool, deep and tiny holes, undercuts) and sheet-metal (thickness, small holes, tight bends) checks with evidence locations.
+- **`img2cad slice`.** Slices STL/3MF to G-code (or a sliced 3MF) with an installed PrusaSlicer, SuperSlicer, OrcaSlicer or Bambu Studio, and reports time and filament.
+- **Docs.** New README (PyPI install first, badges, command table); the design notes moved to `docs/DESIGN.md` and the CLI reference to `docs/WORKFLOW.md`.
+
 ## 0.12.0
 
 - **`img2cad hull`.** A visual-hull blockout from two or three silhouettes (front, right, top), plus `img2cad_lib.visual_hull`. It writes `hull.step`, the traced outlines, and a `model_hull.py` to carve from.

@@ -28,7 +28,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
 PROTOCOL_VERSION = "2025-06-18"
-RUNNABLE = ("workflow", "build", "camera", "hull", "mask", "params", "trace", "inspect", "export", "review", "drawing", "printcheck", "doctor", "version")
+RUNNABLE = ("workflow", "build", "camera", "hull", "mask", "params", "trace", "inspect", "export", "review", "drawing", "printcheck", "dfm", "slice", "parts", "urdf", "doctor", "version")
 MAX_OUTPUT = 60_000
 
 TOOLS = [

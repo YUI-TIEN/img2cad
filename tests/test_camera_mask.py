@@ -97,6 +97,48 @@ class CameraFitTests(unittest.TestCase):
         self.assertLess(int(mask.sum()), 40 * 40)
         self.assertTrue(mask[50, 50] and not mask[2, 2])
 
+    def test_sam_mask_uses_the_predictor_and_reports_a_missing_install(self) -> None:
+        import types
+
+        photo = np.zeros((60, 80, 3), dtype=np.uint8)
+        Image.fromarray(photo).save(self.root / "s.png")
+        calls = {}
+
+        class FakePredictor:
+            @classmethod
+            def from_pretrained(cls, model):
+                calls["model"] = model
+                return cls()
+
+            def set_image(self, rgb):
+                calls["shape"] = rgb.shape
+
+            def predict(self, point_coords, point_labels, box, multimask_output):
+                calls["labels"] = point_labels.tolist()
+                low, high = np.zeros((60, 80)), np.zeros((60, 80))
+                high[10:30, 20:50] = 1
+                return np.stack([low, high]), np.array([0.2, 0.9]), None
+
+        module = types.ModuleType("sam2.sam2_image_predictor")
+        module.SAM2ImagePredictor = FakePredictor
+        saved = {name: sys.modules.get(name) for name in ("sam2", "sam2.sam2_image_predictor")}
+        sys.modules["sam2"] = types.ModuleType("sam2")
+        sys.modules["sam2.sam2_image_predictor"] = module
+        try:
+            mask = make_mask.make_mask(self.root / "s.png", sam={"points": [(30, 20)], "negatives": [(2, 2)], "box": None, "model": "m"})
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = value
+        self.assertEqual(int(mask.sum()), 20 * 30)          # the higher-scoring mask
+        self.assertEqual(calls["labels"], [1, 0])
+        self.assertEqual(calls["shape"], (60, 80, 3))
+        if "sam2" not in sys.modules:
+            with self.assertRaisesRegex(RuntimeError, "img2cad\\[sam\\]"):
+                make_mask.sam_mask(photo, points=[(1, 1)])
+
 
 if __name__ == "__main__":
     unittest.main()

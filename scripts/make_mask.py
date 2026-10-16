@@ -12,9 +12,17 @@ Seeds grow over neighbouring pixels within `--tolerance` of the seed colour
 one click. Always look at the written `*_check.png`: the photo darkened
 outside the mask.
 
-There is no learned segmentation here (no SAM): it would need large model
-downloads. Draw polygons on the gridded zooms the agent already uses, or seed
-a clean background.
+Learned segmentation (optional): `--sam` uses Meta's SAM 2 when it is
+installed (`pip install "img2cad[sam]"`). Give it what to cut with clicks
+and/or a box; the mask is unioned with any shapes above:
+
+    img2cad mask photo.png mask.png --sam --point 300,200 --point 340,260 --negative 40,40
+    img2cad mask photo.png mask.png --sam --box 120,40,480,390
+    img2cad mask photo.png mask.png --sam --sam-model facebook/sam2.1-hiera-large
+
+The model is fetched from Hugging Face on first use (or pass a local
+`--sam-checkpoint` and `--sam-config`). Without SAM 2 installed, `--sam`
+fails with an install hint; the other modes need nothing extra.
 """
 
 from __future__ import annotations
@@ -58,7 +66,37 @@ def grow(rgb: np.ndarray, seed: tuple[float, float], tolerance: float) -> np.nda
     return labels == labels[y, x]
 
 
-def make_mask(image_path: Path, polygons=(), ellipses=(), seeds=(), background_seeds=(), subtract=(), tolerance: float = 15.0) -> np.ndarray:
+def sam_mask(rgb: np.ndarray, points=(), negatives=(), box=None, model: str = "facebook/sam2.1-hiera-small",
+             checkpoint: str | None = None, config: str | None = None) -> np.ndarray:
+    """Best-scoring SAM 2 mask for the given clicks / box."""
+    try:
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+    except ImportError as error:
+        raise RuntimeError('SAM 2 is not installed: pip install "img2cad[sam]" (or pip install sam2 torch)') from error
+    if not points and box is None:
+        raise ValueError("--sam needs at least one --point or a --box")
+    if checkpoint:
+        from sam2.build_sam import build_sam2
+
+        predictor = SAM2ImagePredictor(build_sam2(config, checkpoint))
+    else:
+        predictor = SAM2ImagePredictor.from_pretrained(model)
+    predictor.set_image(rgb)
+    coords = [list(p) for p in points] + [list(p) for p in negatives]
+    labels = [1] * len(points) + [0] * len(negatives)
+    masks, scores, _ = predictor.predict(
+        point_coords=np.array(coords, dtype=np.float32) if coords else None,
+        point_labels=np.array(labels, dtype=np.int32) if coords else None,
+        box=np.array(box, dtype=np.float32) if box is not None else None,
+        multimask_output=box is None and len(points) == 1)
+    masks = np.asarray(masks)
+    if masks.ndim == 2:
+        masks = masks[None]
+    return masks[int(np.argmax(np.asarray(scores).reshape(-1)))] > 0.5
+
+
+def make_mask(image_path: Path, polygons=(), ellipses=(), seeds=(), background_seeds=(), subtract=(), tolerance: float = 15.0,
+              sam: dict | None = None) -> np.ndarray:
     photo = Image.open(image_path).convert("RGB")
     rgb = np.asarray(photo)
     shapes = Image.new("L", photo.size, 0)
@@ -70,6 +108,8 @@ def make_mask(image_path: Path, polygons=(), ellipses=(), seeds=(), background_s
     mask = np.asarray(shapes) > 127
     for seed in seeds:
         mask |= grow(rgb, seed, tolerance)
+    if sam is not None:
+        mask |= sam_mask(rgb, **sam)
     if background_seeds:
         background = np.zeros(mask.shape, dtype=bool)
         for seed in background_seeds:
@@ -96,10 +136,25 @@ def main() -> int:
     parser.add_argument("--background-seed", type=parse_numbers(2), action="append", default=[], help="x,y on a plain background; everything else is subject")
     parser.add_argument("--subtract-polygon", type=parse_points, action="append", default=[], help="area to remove (repeatable)")
     parser.add_argument("--tolerance", type=float, default=15.0, help="colour tolerance for seeds")
+    sam = parser.add_argument_group("SAM 2 (optional, pip install \"img2cad[sam]\")")
+    sam.add_argument("--sam", action="store_true", help="add a SAM 2 mask from --point/--negative/--box")
+    sam.add_argument("--point", type=parse_numbers(2), action="append", default=[], help="x,y on the object (repeatable)")
+    sam.add_argument("--negative", type=parse_numbers(2), action="append", default=[], help="x,y NOT on the object (repeatable)")
+    sam.add_argument("--box", type=parse_numbers(4), help="x0,y0,x1,y1 around the object")
+    sam.add_argument("--sam-model", default="facebook/sam2.1-hiera-small", help="Hugging Face model id")
+    sam.add_argument("--sam-checkpoint", help="local checkpoint instead of downloading (with --sam-config)")
+    sam.add_argument("--sam-config", help="model config name for --sam-checkpoint, e.g. configs/sam2.1/sam2.1_hiera_s.yaml")
     args = parser.parse_args()
-    if not (args.polygon or args.ellipse or args.seed or args.background_seed):
-        parser.error("give at least one --polygon, --ellipse, --seed or --background-seed")
-    mask = make_mask(args.image, args.polygon, args.ellipse, args.seed, args.background_seed, args.subtract_polygon, args.tolerance)
+    if not (args.polygon or args.ellipse or args.seed or args.background_seed or args.sam):
+        parser.error("give at least one --polygon, --ellipse, --seed, --background-seed or --sam")
+    sam_options = None
+    if args.sam:
+        sam_options = {"points": args.point, "negatives": args.negative, "box": args.box, "model": args.sam_model,
+                       "checkpoint": args.sam_checkpoint, "config": args.sam_config}
+    try:
+        mask = make_mask(args.image, args.polygon, args.ellipse, args.seed, args.background_seed, args.subtract_polygon, args.tolerance, sam_options)
+    except RuntimeError as error:
+        parser.exit(2, f"FAIL: {error}\n")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray((mask * 255).astype(np.uint8)).save(args.out)
     check = np.asarray(Image.open(args.image).convert("RGB")).astype(np.float64)
