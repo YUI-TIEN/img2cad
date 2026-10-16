@@ -220,6 +220,7 @@ def record_observations(args: argparse.Namespace) -> None:
 
 AXIS_FOR = {"length": "x", "width": "y", "height": "z", "x": "x", "y": "y", "z": "z"}
 FEATURE_CONSTRAINTS = {"hole", "boss"}
+FACE_NORMALS = {"+x", "-x", "+y", "-y", "+z", "-z"}
 DEFAULT_TOLERANCE = 0.02
 DEFAULT_POSITION_TOLERANCE = 0.05
 
@@ -259,8 +260,24 @@ def finite_number(value: Any) -> bool:
 
 
 def validate_constraint(constraint: Any) -> None:
-    if not isinstance(constraint, dict) or constraint.get("name") not in {*AXIS_FOR, "volume", *FEATURE_CONSTRAINTS}:
-        raise ValueError("measurable constraints must be named length/width/height, x/y/z, volume, hole, or boss")
+    if not isinstance(constraint, dict) or constraint.get("name") not in {*AXIS_FOR, "volume", "face", *FEATURE_CONSTRAINTS}:
+        raise ValueError("measurable constraints must be named length/width/height, x/y/z, volume, hole, boss, or face")
+    if constraint["name"] == "face":
+        if constraint.get("normal") not in FACE_NORMALS:
+            raise ValueError("face constraints need normal +x/-x/+y/-y/+z/-z (the outward direction of the flat face)")
+        if not finite_number(constraint.get("offset")):
+            raise ValueError("face constraints need a numeric offset (the face's coordinate along its normal axis)")
+        for key in ("center", "size"):
+            value = constraint.get(key)
+            if value is not None and (not isinstance(value, list) or len(value) != 2 or not all(finite_number(v) for v in value)):
+                raise ValueError(f"face {key} must be [a, b] in the plane's other two axes")
+        count = constraint.get("count", 1)
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            raise ValueError("face count must be an integer >= 1")
+        for key in ("tolerance", "position_tolerance"):
+            if key in constraint and (not finite_number(constraint[key]) or constraint[key] < 0):
+                raise ValueError(f"face {key} must be a nonnegative number")
+        return
     tolerance = constraint.get("tolerance", DEFAULT_TOLERANCE)
     if not finite_number(tolerance) or tolerance < 0:
         raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
@@ -287,8 +304,43 @@ def validate_constraint(constraint: Any) -> None:
         raise ValueError("volume constraints need an explicit absolute tolerance in cubic model units")
 
 
+def check_face(constraint: dict[str, Any], inspection: dict[str, Any]) -> dict[str, Any]:
+    """Flat faces with this outward normal at this offset (a pocket or slot floor, a step, a ledge), optionally
+    with their extent's centre and size in the plane's other two axes."""
+    tolerance = float(constraint.get("tolerance", DEFAULT_TOLERANCE))
+    position_tolerance = float(constraint.get("position_tolerance", DEFAULT_POSITION_TOLERANCE))
+    expected = constraint.get("count", 1)
+    candidates = [f for f in inspection.get("planar_faces", [])
+                  if f["normal"] == constraint["normal"] and abs(f["offset"] - float(constraint["offset"])) <= tolerance]
+
+    def fits(face: dict[str, Any]) -> bool:
+        if "center" in constraint and any(abs(a - float(b)) > position_tolerance for a, b in zip(face["center"], constraint["center"])):
+            return False
+        if "size" in constraint and any(abs(a - float(b)) > tolerance for a, b in zip(face["size"], constraint["size"])):
+            return False
+        return True
+
+    matches = [f for f in candidates if fits(f)]
+    nearest = None
+    if not matches and candidates and "center" in constraint:
+        nearest = min(candidates, key=lambda f: sum((a - float(b)) ** 2 for a, b in zip(f["center"], constraint["center"])))
+    result = {"name": "face", "normal": constraint["normal"], "offset": float(constraint["offset"]), "tolerance": tolerance,
+              "expected": expected, "measured": len(matches), "passed": len(matches) == expected,
+              "faces_at_offset": len(candidates)}
+    if "label" in constraint:
+        result["label"] = constraint["label"]
+    for key in ("center", "size"):
+        if key in constraint:
+            result[key] = constraint[key]
+    if nearest is not None:
+        result["nearest"] = {"center": nearest["center"], "size": nearest["size"]}
+    return result
+
+
 def check_constraint(constraint: dict[str, Any], inspection: dict[str, Any]) -> dict[str, Any]:
     name = constraint["name"]
+    if name == "face":
+        return check_face(constraint, inspection)
     tolerance = float(constraint.get("tolerance", DEFAULT_TOLERANCE))
     if name in FEATURE_CONSTRAINTS:
         diameter = float(constraint["diameter"])
@@ -492,7 +544,7 @@ def run_geometry(args: argparse.Namespace) -> None:
     dimension_applicable = state["target_type"] == "dimension_constrained"
     dimensions_passed = all(item["passed"] for item in checks) if dimension_applicable else True
     stages["geometry"] = stage_record("passed", {"model_source": artifacts["model_source"], "reference": artifacts["reference"], "observations": observations_hash, "plan": plan_hash}, {**artifacts, "run_report": sha256(report_path)}, run_directory=str(cad_dir.relative_to(root)), status_scope="geometry_and_step_only", command=command, exit_code=0)
-    stages["dimensions"] = stage_record("passed" if dimension_applicable and dimensions_passed else "not_applicable" if not dimension_applicable else "failed", {"model_source": artifacts["model_source"], "plan": plan_hash}, {"run_report": sha256(report_path)}, checks=checks, status_scope="declared_bounds_volume_and_cylindrical_features" if dimension_applicable else "not_applicable")
+    stages["dimensions"] = stage_record("passed" if dimension_applicable and dimensions_passed else "not_applicable" if not dimension_applicable else "failed", {"model_source": artifacts["model_source"], "plan": plan_hash}, {"run_report": sha256(report_path)}, checks=checks, status_scope="declared_bounds_volume_cylindrical_and_planar_features" if dimension_applicable else "not_applicable")
     stages["visual_review"] = {"status": "pending", "inputs": {}, "outputs": {}}
     save_state(root, state)
     print(json.dumps({"geometry": "passed", "status_scope": "geometry_and_step_only", **run_summary(cad_dir, report),
@@ -525,7 +577,9 @@ def runner_command(root: Path, state: dict[str, Any], plan: dict[str, Any], mode
     if args.reference_view:
         view = parse_view(args.reference_view)
         command.append("--reference-view=" + ",".join(repr(value) for value in view))
-    if args.reference_mask:
+    if args.reference_mask and str(args.reference_mask) == "auto":
+        command.extend(["--reference-mask", "auto"])  # the runner builds the mask from the reference (make_mask --auto)
+    elif args.reference_mask:
         mask = args.reference_mask.expanduser().resolve()
         if not mask.is_file():
             raise ValueError(f"reference mask not found: {mask}")
@@ -826,7 +880,8 @@ def main() -> int:
     run.add_argument("workflow", type=Path)
     run.add_argument("--cad-python", help="interpreter with build123d (default: $IMG2CAD_CAD_PYTHON, ./.venv-cad, or this Python)")
     run.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z, e.g. 1,-1,0.7 or -0.35,-1,0.35")
-    run.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object) for the silhouette score")
+    run.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object) for the silhouette score, "
+                     "or `auto` to separate it from a busy background by colour")
     run.set_defaults(func=run_geometry)
     draft = commands.add_parser("preview", help="build a draft model and render the comparison without spending a revision")
     draft.add_argument("workflow", type=Path)
@@ -834,7 +889,7 @@ def main() -> int:
     draft.add_argument("--strict-source", action="store_true", help="enforce the allowlist policy for this draft")
     draft.add_argument("--cad-python", help="interpreter with build123d (default: $IMG2CAD_CAD_PYTHON, ./.venv-cad, or this Python)")
     draft.add_argument("--reference-view", help="direction from the model toward the camera as x,y,z")
-    draft.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object)")
+    draft.add_argument("--reference-mask", type=Path, help="PNG mask of the object in the reference image (white = object), or `auto`")
     draft.add_argument("--stage", choices=PASS_NAMES, help="build this staged pass (blockout, form, detail, colour) of the plan")
     draft.set_defaults(func=preview)
     staged = commands.add_parser("pass-review", help="record pass/revise for one staged pass, bound to its preview")

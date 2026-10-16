@@ -95,19 +95,19 @@ img2cad view runs/mug/model.py      # 3D viewer + parameter sliders
 | `workflow` | staged, resumable image → CAD workflow (`init`, `observations`, `plan`, `run`, `review`, `new-revision`, `promote`, `status`) |
 | `build model.py out/` | STEP + GLB/STL/3MF, checks, previews, comparison and registered overlay |
 | `camera camera.json` | fit the photo's camera to known circles/points; refuses poor fits |
-| `mask photo.png mask.png` | subject mask from polygons, ellipses, colour seeds or `--sam` |
-| `hull views.json` | blockout from 2+ silhouettes — front/right/top or photos at any angle |
-| `trace image.png` | colour regions → pixel outlines |
+| `mask photo.png mask.png` | subject mask from polygons, ellipses, colour seeds, `--auto` (busy backgrounds) or `--sam` |
+| `hull views.json` | blockout from 2+ silhouettes (front/right/top or photos at any angle), hollows cut from declared openings |
+| `trace image.png` | colour regions → pixel outlines (`--quantize` / `--shading-tolerant` for shaded photos) |
 | `inspect model.step` | validity, parts, colours, bounds, volume, holes |
 | `view` · `params` | 3D viewer with live parameters · list/set parameters |
 | `export model.step out/` | GLB (coloured), 3MF (coloured parts), STL |
-| `drawing model.step out/` | three views + hatched section A-A in SVG/DXF/PDF: overall dimensions, tagged holes/bosses with baseline positions, hole table |
-| `printcheck model.step [--orient]` | watertight, overhangs, bed contact, thin walls, build volume; `--orient` picks the orientation needing the least support |
+| `drawing model.step out/` | three views + section (any axis/offset) in SVG/DXF/PDF: thread/counterbore/countersink callouts, pockets, auxiliary views for oblique holes, baseline positions, ISO 2768 tolerances |
+| `printcheck model.step [--orient]` | watertight, overhangs, bed contact, thin walls, build volume; `--orient` picks the orientation needing the least support, respecting `--load-axis` and `--cosmetic` faces |
 | `slice model.3mf --out x.gcode` | G-code via installed PrusaSlicer / SuperSlicer / OrcaSlicer / Bambu Studio |
 | `send x.gcode --printer octoprint --host …` | upload to OctoPrint, PrusaLink, Moonraker (Klipper) or Bambu LAN; `--start` prints |
-| `dfm model.step --process cnc\|sheet` | CNC: sharp internal corners, tool radii, deep holes, counterbores/countersinks/tapped holes, setups · sheet: thickness, hole-to-bend, bends, flat blank |
-| `parts make screw --size M3 --length 12` | ISO screws (real threads with `--threads`), nuts, washers, bearings, spur gears, GT2 pulleys, MGN rails, servos, NEMA 17, 2020 extrusion |
-| `urdf model.step --out robot/` | URDF, SDF or MuJoCo MJCF + meshes; joints guessed from shaft-in-bore fits, a material per part, exact mass/inertia |
+| `dfm model.step --process cnc\|sheet` | CNC (3, 3+2, 5-axis): setups with tool access, corners, radii, holes, threads · sheet: thickness, bends, flat pattern DXF (any bend axes, holes included) |
+| `parts make screw --size M3 --length 12` | ISO screws (real threads with `--threads`), nuts, washers, bearings, spur/helical gears, GT2 pulleys, MGN rails, servos, NEMA 17, 2020 extrusion |
+| `urdf model.step --out robot/` | URDF, SDF or MuJoCo MJCF; revolute and prismatic joints guessed with limits, axis-aligned frames, hull collisions, a material per part, exact inertia |
 | `mcp` · `doctor` · `version` | MCP server (stdio) · environment check · version |
 
 `img2cad <command> --help` shows every option. Full CLI reference: [docs/WORKFLOW.md](docs/WORKFLOW.md).

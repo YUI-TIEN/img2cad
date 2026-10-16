@@ -18,7 +18,10 @@ Checks, each with a status of pass, warn or fail:
 
 `--orient` tries putting each large flat face and each axis direction on the
 bed, scores every candidate by support area (overhangs off the bed), bed
-contact and height, and checks the best one. `--write-oriented` saves it
+contact and height, and checks the best one. `--load-axis x,y,z` keeps the
+main load in the layer plane (FDM layers are weakest pulled apart);
+`--cosmetic x,y,z` (repeatable) keeps the face with that outward normal off
+the bed and free of supports. `--write-oriented` saves it
 (STEP keeps parts and colours; STL is one mesh) with its lowest point on z = 0.
 
 The mesh is the same tessellation the exports use, so results describe what a
@@ -242,7 +245,8 @@ def orientation_candidates(normals: np.ndarray, areas: np.ndarray, limit: int = 
 
 
 def score_orientation(vertices: np.ndarray, normals: np.ndarray, areas: np.ndarray, centres: np.ndarray, rotation: np.ndarray,
-                      build_volume: tuple[float, float, float], overhang_deg: float) -> dict[str, Any]:
+                      build_volume: tuple[float, float, float], overhang_deg: float, load_axis: np.ndarray | None = None,
+                      cosmetic: list[np.ndarray] | None = None) -> dict[str, Any]:
     rotated_vertices, rotated_normals, rotated_centres = vertices @ rotation.T, normals @ rotation.T, centres @ rotation.T
     low, high = rotated_vertices.min(axis=0), rotated_vertices.max(axis=0)
     size = high - low
@@ -253,12 +257,31 @@ def score_orientation(vertices: np.ndarray, normals: np.ndarray, areas: np.ndarr
     fits = all(size[i] <= build_volume[i] for i in range(3))
     # Support area dominates; a bigger footprint and a lower part break ties.
     score = support - 0.1 * bed + 0.01 * float(size[2]) * float(np.sqrt(areas.sum())) + (0 if fits else 1e12)
-    return {"support_area_mm2": round(support, 2), "bed_area_mm2": round(bed, 2), "height_mm": round(float(size[2]), 3),
-            "fits": fits, "score": score}
+    result: dict[str, Any] = {"support_area_mm2": round(support, 2), "bed_area_mm2": round(bed, 2),
+                              "height_mm": round(float(size[2]), 3), "fits": fits}
+    total = float(areas.sum())
+    if load_axis is not None:
+        # FDM parts are weakest pulled across their layers, i.e. along the print's Z axis.
+        along_z = abs(float((rotation @ load_axis)[2]))
+        result["load_across_layers"] = round(along_z, 3)  # 0: load in the layer plane (strong), 1: pulling layers apart
+        score += 2.0 * total * along_z ** 2
+    if cosmetic:
+        marked = np.zeros(len(areas), dtype=bool)
+        for direction in cosmetic:
+            marked |= normals @ direction > np.cos(np.radians(30))
+        scarred = float(areas[marked & (on_bed | overhang)].sum())
+        result["cosmetic_area_scarred_mm2"] = round(scarred, 2)  # on the bed (bed texture) or supported (support marks)
+        score += 5.0 * scarred
+    result["score"] = score
+    return result
 
 
 def best_orientation(parts: list[tuple[str, np.ndarray, np.ndarray]], build_volume: tuple[float, float, float] = (220, 220, 250),
-                     overhang_deg: float = 45) -> dict[str, Any]:
+                     overhang_deg: float = 45, load_axis: Any = None, cosmetic: Any = None) -> dict[str, Any]:
+    """`load_axis`: the main load direction in the model frame (kept in the layer plane when possible);
+    `cosmetic`: outward normals of faces that must look good (kept off the bed and away from supports)."""
+    load = None if load_axis is None else np.array(load_axis, dtype=float) / np.linalg.norm(load_axis)
+    looks = [np.array(d, dtype=float) / np.linalg.norm(d) for d in (cosmetic or [])]
     offsets = np.cumsum([0] + [len(vertices) for _, vertices, _ in parts])
     vertices = np.concatenate([part[1] for part in parts])
     triangles = np.concatenate([part[2] + offset for part, offset in zip(parts, offsets)])
@@ -267,9 +290,9 @@ def best_orientation(parts: list[tuple[str, np.ndarray, np.ndarray]], build_volu
     for direction in orientation_candidates(normals, areas):
         rotation = rotation_to_down(direction)
         ranked.append({"down": [round(float(v), 4) for v in direction], "rotation": rotation,
-                       **score_orientation(vertices, normals, areas, centres, rotation, build_volume, overhang_deg)})
+                       **score_orientation(vertices, normals, areas, centres, rotation, build_volume, overhang_deg, load, looks)})
     ranked.sort(key=lambda item: item["score"])
-    current = score_orientation(vertices, normals, areas, centres, np.eye(3), build_volume, overhang_deg)
+    current = score_orientation(vertices, normals, areas, centres, np.eye(3), build_volume, overhang_deg, load, looks)
     best = ranked[0]
     axis = np.cross(np.array(best["down"]), [0.0, 0.0, -1.0])
     angle = float(np.degrees(np.arccos(np.clip(np.dot(best["down"], [0.0, 0.0, -1.0]), -1, 1))))
@@ -331,6 +354,10 @@ def main() -> int:
     parser.add_argument("--tolerance", type=float, help="STEP tessellation tolerance in mm")
     parser.add_argument("--orient", action="store_true", help="find the orientation needing the least support and check that one")
     parser.add_argument("--write-oriented", type=Path, help="with --orient: save the oriented model (.step for STEP input, or .stl)")
+    parser.add_argument("--load-axis", type=parse_triple, help="with --orient: main load direction x,y,z in the model frame; "
+                                                                 "kept in the layer plane (layers are weakest pulled apart)")
+    parser.add_argument("--cosmetic", type=parse_triple, action="append", default=[],
+                        help="with --orient: outward normal x,y,z of a face that must look good (off the bed, no supports); repeatable")
     args = parser.parse_args()
     if args.write_oriented and not args.orient:
         parser.error("--write-oriented needs --orient")
@@ -338,7 +365,7 @@ def main() -> int:
         result = check_file(args.file, args.build_volume, args.min_wall, args.overhang, args.tolerance)
     else:
         parts = load_parts(args.file, args.tolerance)
-        orientation = best_orientation(parts, args.build_volume, args.overhang)
+        orientation = best_orientation(parts, args.build_volume, args.overhang, args.load_axis, args.cosmetic)
         oriented = apply_rotation(parts, np.array(orientation["rotation_matrix"]))
         result = {"file": str(args.file), "orientation": orientation, **printcheck(oriented, args.build_volume, args.min_wall, args.overhang)}
         if args.write_oriented:

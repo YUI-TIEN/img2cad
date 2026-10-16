@@ -43,6 +43,35 @@ class VisualHullTests(unittest.TestCase):
             for name in ("hull.step", "outlines.json", "model_hull.py"):
                 self.assertTrue((root / "out" / name).is_file(), name)
 
+    def test_declared_cavity_hollows_a_cup(self) -> None:
+        import visual_hull
+
+        # A cup: outer radius 20, 40 tall; the opening seen from the top has radius 16 and goes 36 deep. 1 px = 0.5 mm.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+
+            def mask(name, draw):
+                image = Image.new("L", (200, 200), 0)
+                draw(ImageDraw.Draw(image))
+                image.save(root / name)
+
+            mask("front.png", lambda d: d.rectangle((60, 20, 140, 100), fill=255))
+            mask("right.png", lambda d: d.rectangle((60, 20, 140, 100), fill=255))
+            mask("top.png", lambda d: d.ellipse((60, 60, 140, 140), fill=255))
+            mask("opening.png", lambda d: d.ellipse((68, 68, 132, 132), fill=255))
+            frame = {"mm_per_px": 0.5, "origin_px": [100, 100]}
+            spec = {"views": [{"view": v, "mask": f"{v}.png", **frame} for v in ("front", "right", "top")],
+                    "cavities": [{"view": "top", "mask": "opening.png", "depth": 36, **frame}]}
+            (root / "views.json").write_text(json.dumps(spec))
+            report = visual_hull.run(root / "views.json", root / "out")
+            cup = math.pi * 20 ** 2 * 40 - math.pi * 16 ** 2 * 36
+            self.assertAlmostEqual(report["volume_mm3"] / cup, 1.0, delta=0.04)
+            self.assertEqual(report["cavities"], 1)
+            del spec["cavities"][0]["depth"]
+            (root / "views.json").write_text(json.dumps(spec))
+            with self.assertRaisesRegex(ValueError, "depth"):
+                visual_hull.run(root / "views.json", root / "out2")
+
     def test_sphere_from_three_fitted_cameras_at_odd_angles(self) -> None:
         import numpy as np
         from scipy.spatial import ConvexHull

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from math import sqrt
 from typing import Iterable, Sequence
 
-from build123d import (Align, Axis, BuildLine, BuildPart, BuildSketch, Compound, Cone, Line, Location, Mode, Plane, Polygon, Pos, Rot,
+from build123d import (Align, Axis, Box, BuildLine, BuildPart, BuildSketch, Compound, Cone, Line, Location, Mode, Plane, Polygon, Pos, Rot,
                        Sphere, Spline, extrude, loft, make_face, offset, revolve)
 
 Point2 = Sequence[float]
@@ -255,31 +255,55 @@ def _silhouette_solid(outline_mm, right, toward, reach: float, distance: float |
     return loft([section(reach), section(-reach)])  # pixel rays fan out from the camera
 
 
-def visual_hull(views: Sequence[dict]):
-    """Intersection of silhouettes projected through the model (a blockout).
+def _view_basis(view: dict):
+    if "frame" in view:
+        frame = view["frame"]
+        right, _, toward = camera_basis(frame.get("view", (0, -1, 0)), frame.get("roll", 0.0))
+        return right, toward, frame.get("distance")
+    right, _, toward = _HULL_PLANES[view["view"]]
+    return right, toward, None
+
+
+def visual_hull(views: Sequence[dict] | dict, cavities: Sequence[dict] = ()):
+    """Intersection of silhouettes projected through the model (a blockout), minus declared cavities.
 
     Each view is {"view": "front"|"right"|"top", "outline_mm": [[right, up], ...]}
     for the standard orthographic panels, or {"frame": {...}, "outline_mm": ...}
     for a photo from any angle, where frame holds an ImageFrame's view, roll
     and distance (as written by `img2cad camera`). outline_mm is in that view's
-    screen millimetres at the origin's depth (see scripts/visual_hull.py). The
-    result contains the object but fills every concavity no view sees.
+    screen millimetres at the origin's depth (see scripts/visual_hull.py).
+
+    Silhouettes cannot see a hollow that opens toward a camera (a cup's inside,
+    a box's pocket): the hull fills it. Each cavity, given the same way plus a
+    "depth" in mm, is the opening's outline in that view, cut into the hull from
+    its face nearest that camera, `depth` deep. `views` may also be the dict
+    {"views": [...], "cavities": [...]} that `img2cad hull` writes.
     """
+    if isinstance(views, dict):
+        cavities = list(views.get("cavities", [])) + list(cavities)
+        views = views["views"]
     if len(views) < 2:
         raise ValueError("a visual hull needs at least two views")
-    reach = 4 * max(abs(value) for view in views for point in view["outline_mm"] for value in point) + 1
+    reach = 4 * max(abs(value) for view in [*views, *cavities] for point in view["outline_mm"] for value in point) + 1
     hull = None
     for view in views:
-        if "frame" in view:
-            frame = view["frame"]
-            right, _, toward = camera_basis(frame.get("view", (0, -1, 0)), frame.get("roll", 0.0))
-            distance = frame.get("distance")
-        else:
-            right, _, toward = _HULL_PLANES[view["view"]]
-            distance = None
+        right, toward, distance = _view_basis(view)
         solid = _silhouette_solid(view["outline_mm"], right, toward, reach, distance)
         hull = solid if hull is None else hull & solid
     solids = hull.solids()
     if not solids:
         raise ValueError("the silhouettes do not overlap; check each view's registration")
+    hull = max(solids, key=lambda solid: solid.volume) if len(solids) > 1 else solids[0]
+    for cavity in cavities:
+        depth = float(cavity["depth"])
+        if depth <= 0:
+            raise ValueError("a cavity needs a positive depth (mm)")
+        right, toward, distance = _view_basis(cavity)
+        top = max(sum(a * b for a, b in zip((v.X, v.Y, v.Z), toward)) for v in hull.vertices())
+        slab = Plane(origin=tuple(top * value for value in toward), x_dir=tuple(right), z_dir=tuple(toward)) * \
+            Box(4 * reach, 4 * reach, depth + reach, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        slab = Pos(*[-depth * value for value in toward]) * slab  # from `depth` below the near face out past it
+        cut = _silhouette_solid(cavity["outline_mm"], right, toward, reach, distance) & slab
+        hull = hull - cut
+    solids = hull.solids()
     return max(solids, key=lambda solid: solid.volume) if len(solids) > 1 else solids[0]

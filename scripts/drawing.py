@@ -3,17 +3,28 @@
 
     img2cad drawing model.step out_dir            # writes drawing.svg, drawing.dxf and drawing.pdf
     img2cad drawing model.step out_dir --name "Mounting plate" --formats svg
+    img2cad drawing model.step out_dir --section x@12 --tolerance-class f
 
 Third-angle layout: front view (looking along +Y) bottom left, top view above
-it, right view to its right, and section A-A (cut through the centre along
-the XZ plane, marked on the top view, cut faces hatched) beside the right view
-(`--no-section` leaves it out). Visible edges are solid, hidden edges dashed.
+it, right view to its right, and section A-A beside the right view. The
+section plane is `--section y` (default: the XZ plane through the centre, seen
+from the front), `x` (seen from the right) or `z` (seen from above), at the
+centre or at `@offset` mm; it is marked on the top view (x, y) or front view
+(z) and its cut faces are hatched. `--section none` leaves it out. Visible
+edges are solid, hidden edges dashed.
 Overall width, height and depth are dimensioned. Every full cylindrical hole
 and boss along X, Y or Z is tagged (H1, B1, ...) with its diameter in the view
 that looks down its axis, and its centre is dimensioned from that view's
 lower-left edges (baseline dimensions, so each value reads from one datum).
-The notes list every hole and boss with its diameter, axis and position, so a
-drawing's callouts can be checked against the model (and vice versa).
+Hole tags carry their callout: tapped holes (bore = ISO tap drill) read
+`M3x0.5`, counterbores `CBORE D8x3`, countersinks `CSK 90deg`, and modelled
+thread geometry is named too. Pockets, slots and steps (flat floors facing up
+below the top) are tagged P1, P2 ... in the top view with size and depth, and
+their corners dimensioned from the same datum. Holes on oblique axes get an
+auxiliary view looking down their axis (VIEW B, C) below the front view.
+The notes list every hole, boss and pocket and the general tolerance (ISO
+2768-1, `--tolerance-class f|m|c|v`, default m) with its table for the part's
+size range, so untoleranced dimensions have a defined tolerance.
 Units are millimetres at 1:1; the SVG viewBox fits the sheet.
 """
 
@@ -67,28 +78,50 @@ def view_frame(shape: Any, name: str) -> tuple[Any, float, Any]:
     return look_at, distance, Pos(-box.center().X, -box.center().Y, 0)
 
 
-def section_view(shape: Any, spacing: float) -> tuple[list[Any], list[Any], float]:
-    """Section A-A: the part cut by the XZ plane through its centre, seen from the front (-Y), with the
-    cut faces hatched at 45 degrees. Returns (visible edges, hatch lines, cut area); edges are in front-view coordinates."""
+SECTION_VIEWS = {  # cut normal -> (view it is seen in, plane x_dir, plane z_dir (kept half lies opposite))
+    "y": ("front", (1, 0, 0), (0, -1, 0)),
+    "x": ("right", (0, 1, 0), (1, 0, 0)),
+    "z": ("top", (1, 0, 0), (0, 0, 1)),
+}
+
+
+def parse_section(text: str | None) -> tuple[str, float | None] | None:
+    if text is None or text.lower() == "none":
+        return None
+    axis, _, where = text.lower().partition("@")
+    if axis not in SECTION_VIEWS:
+        raise ValueError("--section takes x, y or z, optionally @offset (mm), or none")
+    return axis, float(where) if where else None
+
+
+def section_view(shape: Any, spacing: float, axis: str = "y", offset: float | None = None) -> tuple[list[Any], list[Any], float]:
+    """The part cut by the plane square to `axis` (through the centre, or at `offset`), seen from the matching
+    view with the cut faces hatched at 45 degrees. Returns (visible edges, hatch lines, cut area) in that view's coordinates."""
     from build123d import Edge, Keep, Plane, section, split
 
+    view, x_dir, z_dir = SECTION_VIEWS[axis]
     center = shape.bounding_box().center()
-    plane = Plane(origin=(center.X, center.Y, center.Z), x_dir=(1, 0, 0), z_dir=(0, -1, 0))
+    origin = [center.X, center.Y, center.Z]
+    if offset is not None:
+        origin["xyz".index(axis)] = offset
+    plane = Plane(origin=tuple(origin), x_dir=x_dir, z_dir=z_dir)
     cut = section(shape, plane)
     if not cut.faces():
         return [], [], 0.0
-    behind = split(shape, bisect_by=plane, keep=Keep.BOTTOM)  # the half behind the cut (+Y), seen from -Y
-    visible, _ = project(behind, "front", view_frame(shape, "front"))
-    flat = plane.to_local_coords(cut)  # local x = X - cX, local y = Z - cZ: the front view's coordinates
+    behind = split(shape, bisect_by=plane, keep=Keep.BOTTOM)  # the half the viewer looks at, beyond the cut
+    visible, _ = project(behind, view, view_frame(shape, view))
+    local = plane.to_local_coords(cut)
+    # plane origin is offset only along its normal from the centre, so local x/y are the view's centred coordinates
+    flat = local
     box = flat.bounding_box()
     hatch = []
     reach = box.size.X + box.size.Y
-    offset = box.min.Y - box.max.X - spacing
-    while offset < box.max.Y - box.min.X + spacing:
-        line = Edge.make_line((box.min.X - 1, box.min.X - 1 + offset), (box.min.X - 1 + reach + 2, box.min.X - 1 + offset + reach + 2))
+    start = box.min.Y - box.max.X - spacing
+    while start < box.max.Y - box.min.X + spacing:
+        line = Edge.make_line((box.min.X - 1, box.min.X - 1 + start), (box.min.X - 1 + reach + 2, box.min.X - 1 + start + reach + 2))
         for face in flat.faces():
             hatch += [edge for edge in face.intersect(line) or [] if hasattr(edge, "length") and edge.length > 1e-6]
-        offset += spacing
+        start += spacing
     return visible, hatch, float(cut.area)
 
 
@@ -99,7 +132,10 @@ def hole_rows(features: list[dict[str, Any]]) -> list[str]:
     for feature in features:
         if not feature.get("full"):
             continue
-        axis = "XYZ"[max(range(3), key=lambda i: abs(feature["axis_direction"][i]))]
+        direction = feature["axis_direction"]
+        axis = "XYZ"[max(range(3), key=lambda i: abs(direction[i]))]
+        if max(abs(v) for v in direction) < 1 - 1e-3:
+            axis = "(" + ", ".join(f"{v:.3f}" for v in direction) + ")"
         key = (feature["kind"], feature["diameter"], axis)
         groups[key] += 1
         positions.setdefault(key, []).append("(" + ", ".join(f"{value:g}" for value in feature["axis_point"]) + ")")
@@ -133,6 +169,7 @@ def feature_layout(features: list[dict[str, Any]], low: Any, high: Any) -> dict[
         tag = ("H" if feature["kind"] == "hole" else "B") + str(counters[feature["kind"]])
         point = feature["axis_point"]
         placed[view].append({"tag": tag, "kind": feature["kind"], "diameter": feature["diameter"], "view": view,
+                             "axis_point": point, "axis_direction": direction,
                              "from_datum": [round(point[u] - lows[u], 3), round(point[v] - lows[v], 3)],
                              "screen": [point[u] - (lows[u] + highs[u]) / 2, point[v] - (lows[v] + highs[v]) / 2]})
     return placed
@@ -212,11 +249,159 @@ def write_pdf(path: Path, visible: list[Any], hidden: list[Any], dimensions: lis
     path.write_bytes(bytes(out))
 
 
+ISO_2768 = {  # general tolerances for linear sizes, +/- mm, by nominal range (ISO 2768-1)
+    "ranges": [(0.5, 3), (3, 6), (6, 30), (30, 120), (120, 400), (400, 1000), (1000, 2000), (2000, 4000)],
+    "f": [0.05, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, None],
+    "m": [0.1, 0.1, 0.2, 0.3, 0.5, 0.8, 1.2, 2.0],
+    "c": [0.2, 0.3, 0.5, 0.8, 1.2, 2.0, 3.0, 4.0],
+    "v": [None, 0.5, 1.0, 1.5, 2.5, 4.0, 6.0, 8.0],
+}
+THREAD_PITCH = {"M2": 0.4, "M2.5": 0.45, "M3": 0.5, "M4": 0.7, "M5": 0.8, "M6": 1.0, "M8": 1.25, "M10": 1.5, "M12": 1.75, "M16": 2.0}
+
+
+def tolerance_notes(tolerance_class: str, largest: float) -> list[str]:
+    values = ISO_2768[tolerance_class]
+    rows = []
+    for (low, high), value in zip(ISO_2768["ranges"], values):
+        if low > largest:
+            break
+        if value is not None:
+            rows.append(f"{low:g}-{high:g}: +/-{value:g}")
+    return [f"General tolerances ISO 2768-{tolerance_class} unless stated", "Linear (mm) " + ", ".join(rows)]
+
+
+def hole_callouts(shape: Any) -> list[dict[str, Any]]:
+    """Hole types (counterbore, countersink, tapped) and modelled threads, from the CNC checks."""
+    from dfm import _concave_cylinders, hole_types, modelled_threads
+
+    callouts = []
+    for solid in shape.solids():
+        callouts += [{"source": "hole", **h} for h in hole_types(solid, _concave_cylinders(solid))]
+        callouts += [{"source": "thread", **t} for t in modelled_threads(solid)]
+    return callouts
+
+
+def callout_text(feature: dict[str, Any], callouts: list[dict[str, Any]]) -> str:
+    """'D6', 'M3x0.5', 'D4 CBORE D8x3', 'D4 CSK 90deg' for the hole whose axis matches."""
+    import math as _math
+
+    text = f"\u00d8{feature['diameter']:g}"
+    point, direction = feature["axis_point"], feature["axis_direction"]
+    for item in callouts:
+        axis = item.get("axis")
+        if not axis or abs(abs(sum(a * b for a, b in zip(axis, direction))) - 1) > 1e-3:
+            continue
+        if item["source"] == "hole":
+            at = item["at_mm"]
+            offset = [at[i] - point[i] for i in range(3)]
+            along = sum(offset[i] * direction[i] for i in range(3))
+            if _math.sqrt(sum((offset[i] - along * direction[i]) ** 2 for i in range(3))) > 0.05:
+                continue
+            if abs(item["bore_mm"] - feature["diameter"]) > 1e-3 and abs(item.get("counterbore_mm", -1) - feature["diameter"]) > 1e-3:
+                continue
+            thread = item.get("likely_thread")
+            if thread:
+                text = f"{thread}x{THREAD_PITCH.get(thread, 0):g}"
+                if item.get("bore_depth_mm"):
+                    text += f" {item['bore_depth_mm']:g} deep"
+            else:
+                text = f"\u00d8{item['bore_mm']:g}"
+            if "counterbore_mm" in item:
+                text += f" CBORE \u00d8{item['counterbore_mm']:g}x{item['counterbore_depth_mm']:g}"
+            if "countersink_deg" in item:
+                text += f" CSK {item['countersink_deg']:g}deg"
+            return text
+        if item["source"] == "thread" and abs(item["major_mm"] - feature["diameter"]) <= 1.0:
+            return f"{item['thread']}x{THREAD_PITCH.get(item['thread'], 0):g} ({item['kind']} thread)"
+    return text
+
+
+def is_counterbore_of_other(feature: dict[str, Any], callouts: list[dict[str, Any]]) -> bool:
+    for item in callouts:
+        if item["source"] != "hole" or "counterbore_mm" not in item or abs(item["counterbore_mm"] - feature["diameter"]) > 1e-3:
+            continue
+        direction, point, at = feature["axis_direction"], feature["axis_point"], item["at_mm"]
+        offset = [at[i] - point[i] for i in range(3)]
+        along = sum(offset[i] * direction[i] for i in range(3))
+        if sum((offset[i] - along * direction[i]) ** 2 for i in range(3)) ** 0.5 <= 0.05:
+            return True
+    return False
+
+
+def pocket_layout(shape: Any) -> list[dict[str, Any]]:
+    """Upward-facing flat floors below the top (pockets, slots, steps), as seen in the top view."""
+    from inspect_step import planar_faces
+
+    box = shape.bounding_box()
+    top = box.max.Z
+    pockets = []
+    for face in planar_faces(shape):
+        if face["normal"] != "+z" or face["offset"] > top - 1e-6 or face.get("round"):
+            continue
+        (cx, cy), (sx, sy) = face["center"], face["size"]
+        pockets.append({"tag": f"P{len(pockets) + 1}", "size": [round(sx, 3), round(sy, 3)], "depth": round(top - face["offset"], 3),
+                        "from_datum": [round(cx - sx / 2 - box.min.X, 3), round(cy - sy / 2 - box.min.Y, 3)],
+                        "screen": [cx - (box.min.X + box.max.X) / 2, cy - (box.min.Y + box.max.Y) / 2]})
+    return pockets[:12]
+
+
+def oblique_groups(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    for feature in features:
+        if not feature.get("full"):
+            continue
+        direction = feature["axis_direction"]
+        if max(abs(v) for v in direction) > 1 - 1e-3:
+            continue
+        group = next((g for g in groups if abs(sum(a * b for a, b in zip(g["direction"], direction))) > 1 - 1e-4), None)
+        if group is None:
+            group = {"direction": direction, "features": []}
+            groups.append(group)
+        group["features"].append(feature)
+    return groups[:2]
+
+
+def auxiliary_view(shape: Any, direction: list[float]) -> tuple[list[Any], list[Any], Any]:
+    """Edges seen looking down `direction`, centred; returns (visible, hidden, function point -> screen xy)."""
+    import numpy as np
+    from build123d import Compound, Pos
+
+    d = np.array(direction, dtype=float)
+    d /= np.linalg.norm(d)
+    up = np.array([0.0, 0.0, 1.0]) if abs(d[2]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    up = up - d * (up @ d)
+    up /= np.linalg.norm(up)
+    center = shape.bounding_box().center()
+    look_at = np.array([center.X, center.Y, center.Z])
+    distance = shape.bounding_box().diagonal * 10
+    visible, hidden = shape.project_to_viewport(tuple(look_at + d * distance), tuple(up), tuple(look_at))
+    box = Compound(list(visible) + list(hidden)).bounding_box()
+    shift = np.array([box.center().X, box.center().Y])
+    screen_x = np.cross(up, d)
+    screen_y = np.cross(d, screen_x)
+
+    def to_screen(point: list[float]) -> tuple[float, float]:
+        rel = np.array(point) - look_at
+        return float(rel @ screen_x - shift[0]), float(rel @ screen_y - shift[1])
+
+    move = Pos(-shift[0], -shift[1], 0)
+    return [move * e for e in visible], [move * e for e in hidden], (to_screen, box.size.X, box.size.Y)
+
+
 def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("svg", "dxf"), name: str | None = None,
-                 with_section: bool = True) -> dict[str, Any]:
+                 with_section: bool | str | None = True, tolerance_class: str = "m") -> dict[str, Any]:
     from build123d import Align, Draft, Edge, ExportDXF, ExportSVG, ExtensionLine, LineType, Pos, Text, Unit, import_step
 
     from inspect_step import cylindrical_features
+
+    if with_section is True:
+        section = ("y", None)
+    elif not with_section:
+        section = None
+    else:
+        section = parse_section(with_section)
+    if tolerance_class not in ("f", "m", "c", "v"):
+        raise ValueError("tolerance class must be f, m, c or v (ISO 2768-1)")
 
     shape = import_step(str(step_path))
     size = shape.bounding_box().size
@@ -226,8 +411,11 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
     features = cylindrical_features(shape)
     bounds = shape.bounding_box()
     placed = feature_layout(features, bounds.min, bounds.max)
+    callouts = hole_callouts(shape)
+    pockets = pocket_layout(shape)
     step = font * 2.2
     front_across = len(unique_values([f["from_datum"][0] for f in placed["front"]]))
+    top_across = len(unique_values([f["from_datum"][0] for f in placed["top"]] + [p["from_datum"][0] for p in pockets]))
     gap = scale_ref * 0.35
     gap_up = gap + step * front_across  # front-view position dimensions sit between the front and top views
     draft = Draft(font_size=font, arrow_length=font, line_width=font / 12, pad_around_text=font / 3,
@@ -238,26 +426,41 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
     right_visible, right_hidden = project(shape, "right")
     top_at = Pos(0, height / 2 + gap_up + depth / 2)
     right_at = Pos(width / 2 + gap + depth / 2, 0)
+    at = {"front": Pos(0, 0), "top": top_at, "right": right_at}
     visible = front_visible + [top_at * e for e in top_visible] + [right_at * e for e in right_visible]
     hidden = front_hidden + [top_at * e for e in top_hidden] + [right_at * e for e in right_hidden]
     hatch: list[Any] = []
     section_labels: list[Any] = []
     section_area = 0.0
-    if with_section:
-        cut_visible, cut_hatch, section_area = section_view(shape, max(font * 0.6, scale_ref / 60))
+    section_report = None
+    if section:
+        axis, where = section
+        cut_visible, cut_hatch, section_area = section_view(shape, max(font * 0.6, scale_ref / 60), axis, where)
         if cut_visible:
+            view = SECTION_VIEWS[axis][0]
+            view_w = {"front": width, "right": depth, "top": width}[view]
+            view_h = {"front": height, "right": height, "top": depth}[view]
             right_dims = len(unique_values([f["from_datum"][1] for f in placed["right"]]))
-            section_at = Pos(right_at.position.X + depth / 2 + gap + step * right_dims + width / 2, 0)
+            section_at = Pos(right_at.position.X + depth / 2 + gap + step * right_dims + view_w / 2, 0)
             visible += [section_at * e for e in cut_visible]
             hatch = [section_at * e for e in cut_hatch]
-            # the cutting plane on the top view (y = centre), chain line past both ends, labelled A
-            reach = width / 2 + font * 1.5
-            cut_line = Pos(0, top_at.position.Y) * Edge.make_line((-reach, 0), (reach, 0))
-            hidden.append(cut_line)
-            section_labels = [Pos(x, top_at.position.Y + font * 0.4) * Text("A", font_size=font, align=(Align.CENTER, Align.MIN))
-                              for x in (-reach, reach)]
-            section_labels.append(Pos(section_at.position.X, -height / 2 - font * 4) *
+            centre = {"x": (bounds.min.X + bounds.max.X) / 2, "y": (bounds.min.Y + bounds.max.Y) / 2, "z": (bounds.min.Z + bounds.max.Z) / 2}[axis]
+            shift = (where if where is not None else centre) - centre
+            # the cutting plane: a chain line past both ends of the view it is seen edge-on in, labelled A
+            if axis in ("x", "y"):
+                reach = (depth if axis == "x" else width) / 2 + font * 1.5
+                ends = [(shift, -reach), (shift, reach)] if axis == "x" else [(-reach, shift), (reach, shift)]
+                host = top_at
+            else:
+                reach = width / 2 + font * 1.5
+                ends = [(-reach, shift), (reach, shift)]
+                host = Pos(0, 0)
+            hidden.append(host * Edge.make_line(ends[0], ends[1]))
+            section_labels = [host * Pos(x, y + font * 0.4) * Text("A", font_size=font, align=(Align.CENTER, Align.MIN)) for x, y in ends]
+            section_labels.append(Pos(section_at.position.X, -max(view_h, height) / 2 - font * 4) *
                                   Text("SECTION A-A", font_size=font, align=(Align.CENTER, Align.MAX)))
+            section_report = {"plane": f"{axis} = {centre + shift:.3f}", "seen_in": view, "cut_area_mm2": round(section_area, 2),
+                              "hatch_lines": len(hatch)}
 
     offset = font * 2.5
     dimensions = [
@@ -276,29 +479,70 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
     tags = []
     feature_dimensions = []
     for view, items in placed.items():
-        if not items:
+        view_pockets = pockets if view == "top" else []
+        if not items and not view_pockets:
             continue
         half_w, half_h, cx, cy = halves[view]
         left, bottom, right, top = cx - half_w, cy - half_h, cx + half_w, cy + half_h
         for item in items:
+            if is_counterbore_of_other(item, callouts):
+                continue  # the counterbore step is part of its hole's callout
             x, y = cx + item["screen"][0], cy + item["screen"][1]
             radius = item["diameter"] / 2
+            label = callout_text(item, callouts)
             tags.append(Pos(x + radius * 0.75 + font * 0.2, y + radius * 0.75) *
-                        Text(f"{item['tag']} \u00d8{item['diameter']:g}", font_size=font * 0.8, align=(Align.MIN, Align.MIN)))
-            feature_dimensions.append({key: item[key] for key in ("tag", "kind", "diameter", "view", "from_datum")})
+                        Text(f"{item['tag']} {label}", font_size=font * 0.8, align=(Align.MIN, Align.MIN)))
+            feature_dimensions.append({**{key: item[key] for key in ("tag", "kind", "diameter", "view", "from_datum")}, "callout": label})
+        for pocket in view_pockets:
+            x, y = cx + pocket["screen"][0], cy + pocket["screen"][1]
+            label = f"{pocket['tag']} {pocket['size'][0]:g}x{pocket['size'][1]:g} depth {pocket['depth']:g}"
+            tags.append(Pos(x, y) * Text(label, font_size=font * 0.7, align=(Align.CENTER, Align.CENTER)))
+            feature_dimensions.append({"tag": pocket["tag"], "kind": "pocket", "view": "top", "from_datum": pocket["from_datum"],
+                                       "size": pocket["size"], "depth": pocket["depth"], "callout": label})
         (above, first_h), (on_left, first_v) = sides[view]
-        for slot, du in enumerate(unique_values([item["from_datum"][0] for item in items]), start=first_h):
+        across = [item["from_datum"][0] for item in items] + [p["from_datum"][0] for p in view_pockets]
+        across += [p["from_datum"][0] + p["size"][0] for p in view_pockets]
+        upward = [item["from_datum"][1] for item in items] + [p["from_datum"][1] for p in view_pockets]
+        upward += [p["from_datum"][1] + p["size"][1] for p in view_pockets]
+        for slot, du in enumerate(unique_values(across), start=first_h):
             x = left + du
             border = [(x, top), (left, top)] if above else [(left, bottom), (x, bottom)]
             dimensions.append(ExtensionLine(border=border, offset=offset + (slot - first_h) * step + (step * first_h), draft=draft))
-        for slot, dv in enumerate(unique_values([item["from_datum"][1] for item in items]), start=first_v):
+        for slot, dv in enumerate(unique_values(upward), start=first_v):
             y = bottom + dv
             border = [(left, y), (left, bottom)] if on_left else [(right, bottom), (right, y)]
             dimensions.append(ExtensionLine(border=border, offset=offset + (slot - first_v) * step + (step * first_v), draft=draft))
+
+    # Auxiliary views for holes on oblique axes, in a row below the front view.
+    aux_report = []
+    row_y = -height / 2 - offset - step * 3 - gap
+    x_cursor = -width / 2
+    for letter, group in zip("BC", oblique_groups(features)):
+        aux_visible, aux_hidden, (to_screen, aux_w, aux_h) = auxiliary_view(shape, group["direction"])
+        place = Pos(x_cursor + aux_w / 2, row_y - aux_h / 2)
+        visible += [place * e for e in aux_visible]
+        hidden += [place * e for e in aux_hidden]
+        names = []
+        for feature in group["features"]:
+            sx, sy = to_screen(feature["axis_point"])
+            radius = feature["diameter"] / 2
+            label = callout_text(feature, callouts)
+            tags.append(place * Pos(sx + radius * 0.75 + font * 0.2, sy + radius * 0.75) *
+                        Text(f"{letter}{len(names) + 1} {label}", font_size=font * 0.8, align=(Align.MIN, Align.MIN)))
+            names.append(f"{letter}{len(names) + 1}")
+        direction = ", ".join(f"{v:.3f}" for v in group["direction"])
+        section_labels.append(place * Pos(0, -aux_h / 2 - font * 1.5) *
+                              Text(f"VIEW {letter} (along {direction})", font_size=font, align=(Align.CENTER, Align.MAX)))
+        aux_report.append({"view": letter, "direction": group["direction"], "holes": names})
+        x_cursor += aux_w + gap
+
     title = name or (step_path.parent.name if step_path.stem == "model" else step_path.stem)
     notes = [title, f"Overall {width:.2f} x {depth:.2f} x {height:.2f} mm (X x Y x Z)",
              "Units mm, scale 1:1, third-angle projection",
-             "Hole/boss centres dimensioned from each view's lower-left edges", *hole_rows(features)]
+             *tolerance_notes(tolerance_class, scale_ref),
+             "Hole/boss/pocket positions dimensioned from each view's lower-left edges", *hole_rows(features)]
+    notes += [f"{p['tag']} pocket/step {p['size'][0]:g} x {p['size'][1]:g}, {p['depth']:g} below the top, corner at "
+              f"({p['from_datum'][0]:g}, {p['from_datum'][1]:g}) from the datum" for p in pockets]
     note_x = right_at.position.X - depth / 2
     note_y = top_at.position.Y + depth / 2
     labels = [Pos(note_x, note_y - index * font * 1.6) * Text(line, font_size=font if index else font * 1.3, align=(Align.MIN, Align.MAX))
@@ -346,8 +590,9 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
         written["pdf"] = str(out_dir / "drawing.pdf")
         write_pdf(Path(written["pdf"]), visible, hidden, dimensions + hatch, labels)
     return {"files": written, "overall_mm": {"x": round(width, 3), "y": round(depth, 3), "z": round(height, 3)},
-            "notes": notes, "feature_dimensions": feature_dimensions,
-            "section": {"plane": "XZ through the centre", "cut_area_mm2": round(section_area, 2), "hatch_lines": len(hatch)} if hatch else None, "visible_edges": len(visible), "hidden_edges": len(hidden)}
+            "notes": notes, "feature_dimensions": feature_dimensions, "section": section_report if hatch else None,
+            "auxiliary_views": aux_report, "tolerance_class": tolerance_class,
+            "visible_edges": len(visible), "hidden_edges": len(hidden)}
 
 
 def main() -> int:
@@ -356,13 +601,19 @@ def main() -> int:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--formats", default="svg,dxf,pdf", help="comma-separated: svg,dxf,pdf")
     parser.add_argument("--name", help="title shown on the sheet (default: the STEP file name)")
-    parser.add_argument("--no-section", action="store_true", help="leave out section A-A")
+    parser.add_argument("--section", default="y", help="section plane: x, y or z, optionally @offset mm (e.g. x@12), or none")
+    parser.add_argument("--no-section", action="store_true", help="leave out section A-A (same as --section none)")
+    parser.add_argument("--tolerance-class", choices=("f", "m", "c", "v"), default="m", help="ISO 2768-1 general tolerance class")
     args = parser.parse_args()
     formats = tuple(item.strip().lower() for item in args.formats.split(",") if item.strip())
     unknown = [item for item in formats if item not in ("svg", "dxf", "pdf")]
     if unknown:
         parser.error(f"unknown formats {unknown}")
-    print(json.dumps(make_drawing(args.step, args.out_dir, formats, args.name, not args.no_section), indent=2))
+    try:
+        report = make_drawing(args.step, args.out_dir, formats, args.name, "none" if args.no_section else args.section, args.tolerance_class)
+    except ValueError as error:
+        parser.error(str(error))
+    print(json.dumps(report, indent=2))
     return 0
 
 

@@ -55,6 +55,35 @@ def cylindrical_features(shape: Any) -> list[dict[str, Any]]:
     return sorted(features.values(), key=lambda item: (item["kind"], item["diameter"], item["axis_point"]))
 
 
+def planar_faces(shape: Any) -> list[dict[str, Any]]:
+    """Flat faces square to X, Y or Z: outward normal, offset along it, and the face's extent (centre and size)
+    in the plane's two other axes (x, y for a Z face; y, z for an X face; x, z for a Y face). Pocket and slot
+    floors, steps and ledges are found by these."""
+    from build123d import GeomType
+
+    found = []
+    for face in shape.faces().filter_by(GeomType.PLANE):
+        centre = face.center()
+        normal = face.normal_at(centre)
+        components = (normal.X, normal.Y, normal.Z)
+        axis = max(range(3), key=lambda i: abs(components[i]))
+        if abs(abs(components[axis]) - 1) > 1e-6:
+            continue
+        box = face.bounding_box()
+        low, high = (box.min.X, box.min.Y, box.min.Z), (box.max.X, box.max.Y, box.max.Z)
+        others = [i for i in range(3) if i != axis]
+        found.append({
+            "normal": ("+" if components[axis] > 0 else "-") + "xyz"[axis],
+            "offset": round(float((low[axis] + high[axis]) / 2), 6),
+            "center": [round(float((low[i] + high[i]) / 2), 6) for i in others],
+            "size": [round(float(high[i] - low[i]), 6) for i in others],
+            "area": round(float(face.area), 6),
+            # bounded only by circles and arcs: a hole bottom or a counterbore floor, not a pocket
+            "round": all(edge.geom_type == GeomType.CIRCLE for edge in face.edges()),
+        })
+    return sorted(found, key=lambda f: (f["normal"], f["offset"], f["center"]))
+
+
 MAX_TOUCH_CHECK_PARTS = 80
 TOUCH_TOLERANCE = 0.01
 
@@ -152,6 +181,7 @@ def inspect_step(path: Path) -> dict[str, Any]:
         "parts": parts,
         "isolated_parts": isolated_parts,
         "cylindrical_features": cylindrical_features(shape),
+        "planar_faces": planar_faces(shape),
         "units": "model units (img2cad convention: mm)",
     }
 

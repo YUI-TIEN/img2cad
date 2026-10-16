@@ -13,6 +13,15 @@ Run with the CAD interpreter (it has numpy, scipy and Pillow):
     .venv-cad/bin/python scripts/trace_regions.py reference.png --mask mask.png \\
         --color white=245,245,242 --color black=25,25,25 --color pink=240,170,165 \\
         --trace black --trace pink --out regions.json --overlay regions.png
+
+Photos with shading, gradients and highlights: `--shading-tolerant` compares
+colours mostly by hue and saturation (lightness counts a third), so a red
+part in shadow and in light is one region. `--quantize K` finds the K main
+colours of the subject itself (named c1..cK, shading-tolerant) instead of a
+hand-made palette; `--trace all` traces every one of them:
+
+    .venv-cad/bin/python scripts/trace_regions.py photo.jpg --mask mask.png --quantize 4 --trace all \
+        --out regions.json --overlay regions.png
 """
 
 from __future__ import annotations
@@ -85,15 +94,45 @@ def simplify(points: list[tuple[float, float]], tolerance: float) -> list[tuple[
     return first[:-1] + second[:-1]
 
 
-def classify(pixels: np.ndarray, palette: dict[str, tuple[int, int, int]]) -> tuple[np.ndarray, list[str]]:
+def tolerant_features(rgb: np.ndarray) -> np.ndarray:
+    """Lightness at a third of its weight plus lightness-normalised opponent colours: shading moves a pixel little."""
+    rgb = rgb.astype(np.float64)
+    light = rgb.mean(axis=-1)
+    scale = 100.0 / (light + 20.0)
+    return np.stack([light / 3.0, (rgb[..., 0] - rgb[..., 1]) * scale, (rgb[..., 1] - rgb[..., 2]) * scale], axis=-1)
+
+
+def classify(pixels: np.ndarray, palette: dict[str, tuple[int, int, int]], shading_tolerant: bool = False) -> tuple[np.ndarray, list[str]]:
     names = list(palette)
     centres = np.array([palette[name] for name in names], dtype=np.float64)
+    if shading_tolerant:
+        pixels, centres = tolerant_features(pixels), tolerant_features(centres)
     distances = np.linalg.norm(pixels[:, :, None, :].astype(np.float64) - centres[None, None, :, :], axis=3)
     return np.argmin(distances, axis=2), names
 
 
+def quantize_palette(reference: Path, mask_path: Path | None, count: int, seed: int = 0) -> dict[str, tuple[int, int, int]]:
+    """The subject's `count` main colours, clustered in shading-tolerant space, as mean RGB (c1 = largest)."""
+    pixels = np.asarray(Image.open(reference).convert("RGB"))
+    inside = np.ones(pixels.shape[:2], dtype=bool)
+    if mask_path is not None:
+        inside = np.asarray(Image.open(mask_path).convert("L")) > 127
+    rgb = pixels[inside].astype(np.float64)
+    rng = np.random.default_rng(seed)
+    if len(rgb) > 20000:
+        rgb = rgb[rng.choice(len(rgb), size=20000, replace=False)]
+    features = tolerant_features(rgb)
+    centres = features[rng.choice(len(features), size=count, replace=False)]
+    for _ in range(25):
+        labels = np.argmin(((features[:, None] - centres[None]) ** 2).sum(-1), axis=1)
+        centres = np.stack([features[labels == j].mean(axis=0) if np.any(labels == j) else centres[j] for j in range(count)])
+    labels = np.argmin(((features[:, None] - centres[None]) ** 2).sum(-1), axis=1)
+    order = np.argsort(-np.bincount(labels, minlength=count))
+    return {f"c{rank + 1}": tuple(int(round(v)) for v in rgb[labels == j].mean(axis=0)) for rank, j in enumerate(order) if np.any(labels == j)}
+
+
 def trace(reference: Path, palette: dict[str, tuple[int, int, int]], targets: list[str], mask_path: Path | None,
-          min_area: int, tolerance: float, edge_band: int = 0) -> dict[str, Any]:
+          min_area: int, tolerance: float, edge_band: int = 0, shading_tolerant: bool = False) -> dict[str, Any]:
     image = Image.open(reference).convert("RGB")
     pixels = np.asarray(image)
     inside = np.ones(pixels.shape[:2], dtype=bool)
@@ -102,7 +141,7 @@ def trace(reference: Path, palette: dict[str, tuple[int, int, int]], targets: li
         if mask.size != image.size:
             raise ValueError(f"mask is {mask.size}, reference is {image.size}")
         inside = np.asarray(mask) > 127
-    labels, names = classify(pixels, palette)
+    labels, names = classify(pixels, palette, shading_tolerant)
     # Pixels near the subject's outline mix with the background; regions that
     # touch this band are usually background bleeding in, not paint.
     edge = inside & ~ndimage.binary_erosion(inside, iterations=edge_band) if edge_band > 0 else np.zeros_like(inside)
@@ -158,8 +197,10 @@ def draw_overlay(reference: Path, traced: dict[str, Any], output: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("reference", type=Path)
-    parser.add_argument("--color", type=parse_color, action="append", required=True, help="palette entry name=r,g,b; include every colour present on the subject")
-    parser.add_argument("--trace", action="append", required=True, help="palette name whose regions to trace (repeatable)")
+    parser.add_argument("--color", type=parse_color, action="append", default=[], help="palette entry name=r,g,b; include every colour present on the subject")
+    parser.add_argument("--quantize", type=int, help="find this many main colours of the subject instead of --color (implies --shading-tolerant)")
+    parser.add_argument("--shading-tolerant", action="store_true", help="match colours by hue/saturation more than lightness (shaded photos)")
+    parser.add_argument("--trace", action="append", required=True, help="palette name whose regions to trace (repeatable), or all")
     parser.add_argument("--mask", type=Path, help="white = subject; pixels outside are ignored")
     parser.add_argument("--min-area", type=int, default=30, help="ignore regions smaller than this many pixels")
     parser.add_argument("--simplify", type=float, default=1.0, help="outline simplification tolerance in pixels")
@@ -167,11 +208,20 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--overlay", type=Path, help="write the traced outlines over the reference for checking")
     args = parser.parse_args()
-    palette = dict(args.color)
-    unknown = [name for name in args.trace if name not in palette]
+    if args.quantize:
+        if args.quantize < 2:
+            parser.error("--quantize needs at least 2 colours")
+        palette = quantize_palette(args.reference, args.mask, args.quantize)
+    elif args.color:
+        palette = dict(args.color)
+    else:
+        parser.error("give --color entries or --quantize K")
+    targets = list(palette) if args.trace == ["all"] else args.trace
+    unknown = [name for name in targets if name not in palette]
     if unknown:
-        parser.error(f"--trace names not in the palette: {unknown}")
-    traced = trace(args.reference, palette, args.trace, args.mask, args.min_area, args.simplify, args.edge_band if args.mask else 0)
+        parser.error(f"--trace names not in the palette: {unknown} (palette: {', '.join(palette)})")
+    traced = trace(args.reference, palette, targets, args.mask, args.min_area, args.simplify, args.edge_band if args.mask else 0,
+                   args.shading_tolerant or bool(args.quantize))
     args.out.write_text(json.dumps(traced, indent=1) + "\n", encoding="utf-8")
     if args.overlay:
         draw_overlay(args.reference, traced, args.overlay)

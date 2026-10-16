@@ -414,7 +414,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         make_comparison(local_reference, preview_path, comparison_path)
         silhouette_path = run_dir / "silhouette.png"
         local_mask = None
-        if args.reference_mask:
+        if args.reference_mask and str(args.reference_mask) == "auto":
+            # busy photo: separate the object from the background by colour (make_mask --auto) and keep the mask
+            from make_mask import auto_mask
+
+            reference_rgb = np.asarray(Image.open(local_reference).convert("RGB"))
+            local_mask = run_dir / "reference_mask.png"
+            Image.fromarray((auto_mask(reference_rgb) * 255).astype(np.uint8)).save(local_mask)
+        elif args.reference_mask:
             mask_source = args.reference_mask.expanduser().resolve()
             if not mask_source.is_file():
                 raise FileNotFoundError(mask_source)
@@ -471,7 +478,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--mesh-tolerance", type=float, default=0.45)
     parser.add_argument("--reference-view", type=parse_view, help="direction from the model toward the camera as x,y,z (Z up); replaces the isometric panel")
-    parser.add_argument("--reference-mask", type=Path, help="optional PNG mask of the object in the reference image (white = object), same size as the reference")
+    parser.add_argument("--reference-mask", type=Path, help="optional PNG mask of the object in the reference image (white = object), same size as the reference; `auto` builds one by colour (make_mask --auto)")
     parser.add_argument("--allow-multiple-solids", action="store_true", help="accept parts made of several solids and floating parts")
     parser.add_argument("--mesh-formats", type=parse_formats, default=("glb", "stl", "3mf"),
                         help="meshes to export next to model.step: any of glb,stl,3mf, or none (default: all)")

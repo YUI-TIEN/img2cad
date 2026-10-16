@@ -2,6 +2,18 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.17.0
+
+- **Image to CAD.** `img2cad hull` takes `cavities` (an opening's mask in a view plus a depth) and cuts hollows that silhouettes cannot see. `img2cad mask --auto [--box]` separates an object from a busy background by colour, with no extra install. `--reference-mask auto` builds the silhouette mask in the runner. `img2cad trace --shading-tolerant` and `--quantize K --trace all` handle shaded photos.
+- **Dimension gate.** `face` constraints find pocket and slot floors, steps and ledges by normal, offset, centre and size. `img2cad inspect` lists `planar_faces`.
+- **Drawings.** The section plane is now a choice: `--section x|y|z[@offset]`. Hole tags carry callouts (`M3x0.5`, `CBORE`, `CSK`, modelled threads). Pockets and steps are tagged and dimensioned. Oblique holes get auxiliary views. ISO 2768-1 general tolerances are noted (`--tolerance-class`).
+- **Printing.** `printcheck --orient --load-axis x,y,z --cosmetic x,y,z` keeps the load in the layer plane and keeps visible faces off the bed and free of supports.
+- **CNC.** `dfm --axes 3|3+2|5` plans setups with ray-tested tool access and suggests vise jaws or a fixture. Concave edges are classed against the planned tool axes (sharp, or inaccessible). Modelled threads are named. Tilted and split holes are measured by their own parameters.
+- **Sheet metal.** A real unfolder (`sheet_unfold.py`) handles bends about any axes and carries holes and cut-outs along. `dfm --flat-dxf` writes the flat pattern and bend lines.
+- **Robots.** Prismatic joints are guessed from guided flat contacts. Revolute limits come from a collision sweep (`continuous` when free). Joint frames can align with the joint axis (`"frame": "axis"`) or take `rpy`, and inertia and meshes are written in each link's frame. Convex-hull collision meshes are the default.
+- **Parts.** Helical gears and profile shift (`--helix`, `--shift`, `centre_distance`). The GT2 pulley uses the Gates groove profile. MGN rails get counterbored rail holes and tapped carriage holes.
+- **Parameter panel.** Bools as switches, tuple elements, and marked parameters inside functions (`# [min, max]` or `# @param`).
+
 ## 0.16.0
 
 - **Section view on drawings.** Section A-A cuts the part through its centre (XZ plane), marked on the top view, with hatched cut faces; `--no-section` leaves it out.

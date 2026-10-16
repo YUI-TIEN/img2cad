@@ -63,5 +63,31 @@ class TraceRegionsTests(unittest.TestCase):
             self.assertAlmostEqual(radius, 1.0, delta=0.15)
 
 
+
+@unittest.skipIf(trace_regions is None, "trace_regions needs scipy (run with .venv-cad/bin/python)")
+class ShadedTraceTests(unittest.TestCase):
+    def test_shading_tolerant_and_quantized_palettes_ignore_a_lighting_gradient(self) -> None:
+        import numpy as np
+
+        rows, cols = np.mgrid[0:200, 0:300]
+        light = 0.35 + 0.65 * (cols / 300)  # dark on the left, bright on the right
+        image = np.zeros((200, 300, 3))
+        image[...] = (230, 230, 225)
+        red = (cols - 100) ** 2 + (rows - 100) ** 2 < 60 ** 2
+        blue = (cols - 220) ** 2 + (rows - 100) ** 2 < 45 ** 2
+        image[red], image[blue] = (200, 40, 40), (40, 70, 190)
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "shaded.png"
+            Image.fromarray((image * light[..., None]).clip(0, 255).astype(np.uint8)).save(path)
+            palette = {"white": (230, 230, 225), "red": (200, 40, 40), "blue": (40, 70, 190)}
+            plain = trace_regions.trace(path, palette, ["blue"], None, 30, 1.0, 0, False)
+            self.assertGreater(len(plain["regions"]["blue"]), 1)  # the shadowed background reads as blue
+            tolerant = trace_regions.trace(path, palette, ["red", "blue"], None, 30, 1.0, 0, True)
+            self.assertEqual([r["area_px"] for r in tolerant["regions"]["red"]], [int(red.sum())])
+            self.assertEqual([r["area_px"] for r in tolerant["regions"]["blue"]], [int(blue.sum())])
+            found = trace_regions.quantize_palette(path, None, 3)
+            areas = sorted(r["area_px"] for name in found for r in trace_regions.trace(path, found, [name], None, 30, 1.0, 0, True)["regions"][name])
+            self.assertEqual(areas[:2], sorted([int(blue.sum()), int(red.sum())]))
+
 if __name__ == "__main__":
     unittest.main()
