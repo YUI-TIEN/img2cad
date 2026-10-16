@@ -9,7 +9,7 @@
 [![Tests](https://github.com/YUI-TIEN/img2cad/actions/workflows/test.yml/badge.svg)](https://github.com/YUI-TIEN/img2cad/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[Website & 3D examples](https://yui-tien.github.io/img2cad/) · [Install](#install) · [Commands](#commands) · [Examples](examples/) · [How it works](docs/DESIGN.md)
+[Website & 3D examples](https://yui-tien.github.io/img2cad/) · [Get started](#get-started) · [Manual install](#manual-install) · [Commands](#commands) · [Examples](examples/) · [How it works](docs/DESIGN.md)
 
 <img src="examples/espresso-cup/comparison.png" alt="A photo of an espresso cup beside the CAD model img2cad built from it, in four views" width="820">
 
@@ -18,6 +18,28 @@
 img2cad gives Claude Code, Codex, Cursor, Gemini CLI or any MCP host a **staged, checked workflow** for image → CAD. The agent reads the image, records what it sees and plans the parts, writes [build123d](https://github.com/gumyr/build123d) source, and the local runner builds it, measures it, and overlays it on the image — refusing to move on until geometry, dimensions and a visual review pass.
 
 You get a parametric `model.py` you can keep editing, plus **STEP** (named, coloured parts), **GLB**, **STL** and **3MF**.
+
+## Get started
+
+Use an image-capable coding agent that can run local commands.
+
+### 1. Ask your agent to install img2cad
+
+Paste this into your agent:
+
+```text
+Install img2cad from https://github.com/YUI-TIEN/img2cad for this agent. Follow the host-specific setup in its README, set up the local CAD runtime, and run the documented doctor check. Then verify that this agent can access and use the img2cad Skill/plugin workflow. If it requires a restart or reload, do that and verify again before telling me everything is ready.
+```
+
+Your agent will choose the setup for its host and confirm both the CAD environment and its own access to the img2cad workflow before you start. Prefer to install it yourself? See [Manual install](#manual-install).
+
+### 2. Attach an image and describe what you want
+
+For example:
+
+> Use img2cad to make editable CAD from this image. Unless I provide dimensions, make a visual approximation. Show me a preview and provide the editable `model.py` and a STEP file; list important assumptions.
+
+The CAD geometry and exports are built locally; your agent reviews a comparison preview. Check the preview and measured geometry before manufacturing—a visual approximation is not a dimensionally verified part.
 
 ## Highlights
 
@@ -28,7 +50,7 @@ You get a parametric `model.py` you can keep editing, plus **STEP** (named, colo
 - 🎛️ **Live parameter panel** — `img2cad view model.py` opens a 3D viewer with sliders; changes rebuild locally and save back to the source.
 - 🏭 **Ready to make** — 3D-print check, slicing and sending to your printer, CNC / sheet-metal DFM with flat blanks, engineering drawings (SVG/DXF/PDF), a standard parts library, URDF / SDF / MJCF for robots.
 
-## Install
+## Manual install
 
 ### In your agent
 
@@ -36,8 +58,7 @@ You get a parametric `model.py` you can keep editing, plus **STEP** (named, colo
 |---|---|
 | **Claude Code** | `/plugin marketplace add YUI-TIEN/img2cad` then `/plugin install img2cad@img2cad` |
 | **Gemini CLI** | `gemini extensions install https://github.com/YUI-TIEN/img2cad` |
-| **Codex / Cursor** | add this repository as a plugin (`.codex-plugin/`, `.cursor-plugin/`) |
-| **Any agent with skills** | `npx skills add YUI-TIEN/img2cad` |
+| **Codex, Cursor or another agent with skills** | `npx skills add YUI-TIEN/img2cad` |
 | **Any MCP host** | command `uvx img2cad mcp` (see below) |
 
 <details>
@@ -75,18 +96,6 @@ python3 -m venv .venv-cad && .venv-cad/bin/pip install -r requirements-cad.lock 
 ```
 
 </details>
-
-## Quick start
-
-Give your agent an image and ask:
-
-> Turn `mug.jpg` into editable CAD. It is 95 mm tall. Use img2cad.
-
-The agent follows [`skills/img2cad/SKILL.md`](skills/img2cad/SKILL.md): it runs `img2cad workflow init`, records observations and a part plan, writes `model.py`, builds it, compares it with the photo, and revises until the review passes. Open the result:
-
-```sh
-img2cad view runs/mug/model.py      # 3D viewer + parameter sliders
-```
 
 ## Commands
 
