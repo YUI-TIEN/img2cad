@@ -1,6 +1,6 @@
 {
   "name": "img2cad",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Turn images, photos, sketches and drawings into editable, coloured CAD (STEP, GLB, 3MF, STL) with a staged, self-checking agent workflow, a local 3D viewer, engineering drawings and printability checks.",
   "author": {"name": "YUI-TIEN", "url": "https://github.com/YUI-TIEN"},
   "homepage": "https://yui-tien.github.io/img2cad/",

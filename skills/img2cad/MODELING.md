@@ -185,11 +185,12 @@ For each item decide `modelled`, `painted` (a decal) or `omitted` with a reason.
 {"name": "length", "value": 80, "tolerance": 0.01}
 {"name": "hole", "diameter": 6, "count": 4, "tolerance": 0.01}
 {"name": "boss", "diameter": 24, "count": 1}
+{"name": "hole", "diameter": 6, "count": 4, "axis": "z", "positions": [[-32, -17], [-32, 17], [32, -17], [32, 17]], "position_tolerance": 0.05}
 {"name": "volume", "value": 22767.8, "tolerance": 1.0}
 ```
 
 - `length`/`width`/`height` (or `x`/`y`/`z`) compare overall STEP bounds. The default tolerance is 0.02.
-- `hole` and `boss` count full cylindrical features of that diameter (holes and bores vs. shafts and bosses), grouped by axis. Fillet rounds are partial cylinders and are ignored. **Position is not checked**; confirm it visually.
+- `hole` and `boss` count full cylindrical features of that diameter (holes and bores vs. shafts and bosses), grouped by axis. Fillet rounds are partial cylinders and are ignored. Add `axis` (`x`/`y`/`z`) to count only features along it, and `positions` (one per feature, in model coordinates: `[a, b]` across the axis, i.e. `(x, y)` for `z`, `(y, z)` for `x`, `(x, z)` for `y`, or `[x, y, z]`) to check where each one is: every expected position must have its own feature whose axis passes within `position_tolerance` (default 0.05 mm). Without `positions`, **position is not checked**; declare them whenever the drawing gives them.
 - `volume` needs an explicit absolute tolerance in mm³. It catches a missing feature or a wrong size that the bounds cannot.
 
 ## Iterating with `preview`

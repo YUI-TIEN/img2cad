@@ -101,8 +101,8 @@ img2cad view runs/mug/model.py      # 3D viewer + parameter sliders
 | `inspect model.step` | validity, parts, colours, bounds, volume, holes |
 | `view` · `params` | 3D viewer with live parameters · list/set parameters |
 | `export model.step out/` | GLB (coloured), 3MF (coloured parts), STL |
-| `drawing model.step out/` | three-view SVG/DXF with dimensions and a hole table |
-| `printcheck model.step` | watertight, overhangs, bed contact, thin walls, build volume |
+| `drawing model.step out/` | three-view SVG/DXF/PDF: overall dimensions, tagged holes/bosses with baseline position dimensions, hole table |
+| `printcheck model.step [--orient]` | watertight, overhangs, bed contact, thin walls, build volume; `--orient` picks the orientation needing the least support |
 | `slice model.3mf --out x.gcode` | G-code via installed PrusaSlicer / SuperSlicer / OrcaSlicer / Bambu Studio |
 | `send x.gcode --printer octoprint --host …` | upload to OctoPrint, PrusaLink, Moonraker (Klipper) or Bambu LAN; `--start` prints |
 | `dfm model.step --process cnc\|sheet` | CNC: sharp internal corners, tool radii, deep holes, setups · sheet: thickness, hole-to-bend, bends, flat blank |

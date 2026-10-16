@@ -53,7 +53,7 @@ The tessellation tolerance defaults to 1/2000 of the model diagonal (at least 0.
 img2cad drawing model.step out/ --name "Mounting plate"      # out/drawing.svg, drawing.dxf and drawing.pdf
 ```
 
-Third-angle sheet: front view (looking along +Y), top view above it, right view beside it; visible edges solid, hidden edges dashed; overall width, height and depth dimensioned; and a note block listing every full cylindrical hole/boss with diameter, axis and position. Check the hole table against the source drawing: it is the fastest way to catch a hole in the wrong place, which the dimension gate does not check. The DXF opens in any 2D CAD tool for further dimensioning.
+Third-angle sheet: front view (looking along +Y), top view above it, right view beside it; visible edges solid, hidden edges dashed; overall width, height and depth dimensioned. Every full hole/boss along X, Y or Z is tagged (`H1 Ø6`, `B1 Ø12`) in the view looking down its axis, and its centre is dimensioned from that view's lower-left edges (baseline dimensions; up to 10 per direction per view, the rest in the notes). The report's `feature_dimensions` lists each tag with its view and datum distances. A note block lists every full cylindrical hole/boss with diameter, axis and position. Not drawn: section views, tolerances, thread callouts, slot/pocket dimensions; add them in a 2D CAD tool from the DXF before sending to a shop. Check the hole table against the source drawing: it is the fastest way to catch a hole in the wrong place, which the dimension gate does not check. The DXF opens in any 2D CAD tool for further dimensioning.
 
 ## 3D-printability check
 
@@ -61,7 +61,13 @@ Third-angle sheet: front view (looking along +Y), top view above it, right view 
 img2cad printcheck model.step [--build-volume 220,220,250] [--min-wall 0.8] [--overhang 45]
 ```
 
-Orient the model as it will print (Z up, bed at the lowest point). The report gives `pass`/`warn`/`fail` per check and an overall status (exit code 1 on fail):
+Orient the model as it will print (Z up, bed at the lowest point), or let the tool choose:
+
+```sh
+img2cad printcheck model.step --orient --write-oriented oriented.step   # or .stl
+```
+
+`--orient` tries each axis direction and the largest flat faces as the bottom, picks the one with the least support area (then the most bed contact, then the lowest height), and checks that orientation. The report's `orientation` gives the face that goes down, the rotation (axis and degrees, and a matrix), the scores as given and for the top candidates. Strength along layers and cosmetic faces are not scored; say so when a part is loaded or visible. The report gives `pass`/`warn`/`fail` per check and an overall status (exit code 1 on fail):
 
 - `watertight` — every part closed and manifold; `solids` — no loose pieces inside a part;
 - `build_volume` — fits the printer; `bed_contact` — enough area on the bed to stay put;

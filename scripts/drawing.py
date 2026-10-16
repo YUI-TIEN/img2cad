@@ -6,9 +6,12 @@
 
 Third-angle layout: front view (looking along +Y) bottom left, top view above
 it, right view to its right. Visible edges are solid, hidden edges dashed.
-Overall width, height and depth are dimensioned. Full cylindrical holes and
-bosses from `inspect_step` are listed with their diameter, axis and position,
-so a drawing's callouts can be checked against the model (and vice versa).
+Overall width, height and depth are dimensioned. Every full cylindrical hole
+and boss along X, Y or Z is tagged (H1, B1, ...) with its diameter in the view
+that looks down its axis, and its centre is dimensioned from that view's
+lower-left edges (baseline dimensions, so each value reads from one datum).
+The notes list every hole and boss with its diameter, axis and position, so a
+drawing's callouts can be checked against the model (and vice versa).
 Units are millimetres at 1:1; the SVG viewBox fits the sheet.
 """
 
@@ -59,6 +62,42 @@ def hole_rows(features: list[dict[str, Any]]) -> list[str]:
         where = ", ".join(positions[(kind, diameter, axis)][:6]) + (" ..." if count > 6 else "")
         rows.append(f"{count}x {kind} D{diameter:g} along {axis} at {where}")
     return rows
+
+
+# view -> (axis its circles are seen along, model index of screen right, model index of screen up)
+FEATURE_VIEWS = {"front": (1, 0, 2), "top": (2, 0, 1), "right": (0, 1, 2)}
+MAX_FEATURE_DIMENSIONS = 10  # per direction per view; the notes carry the rest
+
+
+def feature_layout(features: list[dict[str, Any]], low: Any, high: Any) -> dict[str, list[dict[str, Any]]]:
+    """Tag full holes/bosses and place each in the view along its axis, measured from that view's lower-left corner."""
+    lows, highs = (low.X, low.Y, low.Z), (high.X, high.Y, high.Z)
+    placed: dict[str, list[dict[str, Any]]] = {name: [] for name in FEATURE_VIEWS}
+    counters = {"hole": 0, "boss": 0}
+    for feature in features:
+        if not feature.get("full"):
+            continue
+        direction = feature["axis_direction"]
+        axis = max(range(3), key=lambda i: abs(direction[i]))
+        if abs(abs(direction[axis]) - 1) > 1e-3:
+            continue  # oblique: listed in the notes only
+        view = next(name for name, (along, _, _) in FEATURE_VIEWS.items() if along == axis)
+        _, u, v = FEATURE_VIEWS[view]
+        counters[feature["kind"]] += 1
+        tag = ("H" if feature["kind"] == "hole" else "B") + str(counters[feature["kind"]])
+        point = feature["axis_point"]
+        placed[view].append({"tag": tag, "kind": feature["kind"], "diameter": feature["diameter"], "view": view,
+                             "from_datum": [round(point[u] - lows[u], 3), round(point[v] - lows[v], 3)],
+                             "screen": [point[u] - (lows[u] + highs[u]) / 2, point[v] - (lows[v] + highs[v]) / 2]})
+    return placed
+
+
+def unique_values(values: list[float]) -> list[float]:
+    found: list[float] = []
+    for value in sorted(values):
+        if value > 1e-6 and not any(abs(value - seen) < 1e-3 for seen in found):
+            found.append(value)
+    return found[:MAX_FEATURE_DIMENSIONS]
 
 
 def _polyline(edge: Any, tolerance: float) -> list[tuple[float, float]]:
@@ -136,15 +175,21 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
     size = shape.bounding_box().size
     width, depth, height = size.X, size.Y, size.Z
     scale_ref = max(width, depth, height)
-    gap = scale_ref * 0.35
     font = max(2.5, scale_ref / 28)
+    features = cylindrical_features(shape)
+    bounds = shape.bounding_box()
+    placed = feature_layout(features, bounds.min, bounds.max)
+    step = font * 2.2
+    front_across = len(unique_values([f["from_datum"][0] for f in placed["front"]]))
+    gap = scale_ref * 0.35
+    gap_up = gap + step * front_across  # front-view position dimensions sit between the front and top views
     draft = Draft(font_size=font, arrow_length=font, line_width=font / 12, pad_around_text=font / 3,
                   decimal_precision=2, display_units=False, extension_gap=font / 2)
 
     front_visible, front_hidden = project(shape, "front")
     top_visible, top_hidden = project(shape, "top")
     right_visible, right_hidden = project(shape, "right")
-    top_at = Pos(0, height / 2 + gap + depth / 2)
+    top_at = Pos(0, height / 2 + gap_up + depth / 2)
     right_at = Pos(width / 2 + gap + depth / 2, 0)
     visible = front_visible + [top_at * e for e in top_visible] + [right_at * e for e in right_visible]
     hidden = front_hidden + [top_at * e for e in top_hidden] + [right_at * e for e in right_hidden]
@@ -158,14 +203,41 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
                       offset=offset, draft=draft),
     ]
 
-    features = cylindrical_features(shape)
+    # Feature tags and baseline position dimensions, per view.
+    halves = {"front": (width / 2, height / 2, 0.0, 0.0), "top": (width / 2, depth / 2, 0.0, top_at.position.Y),
+              "right": (depth / 2, height / 2, right_at.position.X, 0.0)}
+    # (horizontal dims above?, first slot), (vertical dims left?, first slot): keep clear of the overall dimensions and notes
+    sides = {"front": ((True, 0), (True, 1)), "top": ((True, 0), (True, 0)), "right": ((False, 1), (False, 0))}
+    tags = []
+    feature_dimensions = []
+    for view, items in placed.items():
+        if not items:
+            continue
+        half_w, half_h, cx, cy = halves[view]
+        left, bottom, right, top = cx - half_w, cy - half_h, cx + half_w, cy + half_h
+        for item in items:
+            x, y = cx + item["screen"][0], cy + item["screen"][1]
+            radius = item["diameter"] / 2
+            tags.append(Pos(x + radius * 0.75 + font * 0.2, y + radius * 0.75) *
+                        Text(f"{item['tag']} \u00d8{item['diameter']:g}", font_size=font * 0.8, align=(Align.MIN, Align.MIN)))
+            feature_dimensions.append({key: item[key] for key in ("tag", "kind", "diameter", "view", "from_datum")})
+        (above, first_h), (on_left, first_v) = sides[view]
+        for slot, du in enumerate(unique_values([item["from_datum"][0] for item in items]), start=first_h):
+            x = left + du
+            border = [(x, top), (left, top)] if above else [(left, bottom), (x, bottom)]
+            dimensions.append(ExtensionLine(border=border, offset=offset + (slot - first_h) * step + (step * first_h), draft=draft))
+        for slot, dv in enumerate(unique_values([item["from_datum"][1] for item in items]), start=first_v):
+            y = bottom + dv
+            border = [(left, y), (left, bottom)] if on_left else [(right, bottom), (right, y)]
+            dimensions.append(ExtensionLine(border=border, offset=offset + (slot - first_v) * step + (step * first_v), draft=draft))
     title = name or (step_path.parent.name if step_path.stem == "model" else step_path.stem)
     notes = [title, f"Overall {width:.2f} x {depth:.2f} x {height:.2f} mm (X x Y x Z)",
-             "Units mm, scale 1:1, third-angle projection", *hole_rows(features)]
+             "Units mm, scale 1:1, third-angle projection",
+             "Hole/boss centres dimensioned from each view's lower-left edges", *hole_rows(features)]
     note_x = right_at.position.X - depth / 2
     note_y = top_at.position.Y + depth / 2
     labels = [Pos(note_x, note_y - index * font * 1.6) * Text(line, font_size=font if index else font * 1.3, align=(Align.MIN, Align.MAX))
-              for index, line in enumerate(notes)]
+              for index, line in enumerate(notes)] + tags
 
     out_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, str] = {}
@@ -203,7 +275,7 @@ def make_drawing(step_path: Path, out_dir: Path, formats: tuple[str, ...] = ("sv
         written["pdf"] = str(out_dir / "drawing.pdf")
         write_pdf(Path(written["pdf"]), visible, hidden, dimensions, labels)
     return {"files": written, "overall_mm": {"x": round(width, 3), "y": round(depth, 3), "z": round(height, 3)},
-            "notes": notes, "visible_edges": len(visible), "hidden_edges": len(hidden)}
+            "notes": notes, "feature_dimensions": feature_dimensions, "visible_edges": len(visible), "hidden_edges": len(hidden)}
 
 
 def main() -> int:

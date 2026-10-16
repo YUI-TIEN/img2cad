@@ -9,6 +9,8 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+
+import numpy as np
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -163,6 +165,29 @@ class CadManufacturingTests(unittest.TestCase):
             data = mujoco.MjData(model)
             mujoco.mj_forward(model, data)
             self.assertAlmostEqual(float(data.geom_xpos[1][2]), 0.03, places=6)  # the arm sits where it was modelled
+
+    def test_orient_turns_a_mushroom_cap_down(self) -> None:
+        from build123d import Align, Axis, Cylinder, Pos, export_step, import_step
+        import printcheck
+
+        mushroom = Cylinder(5, 30, align=(Align.CENTER, Align.CENTER, Align.MIN)) + Pos(0, 0, 30) * Cylinder(20, 4, align=(Align.CENTER, Align.CENTER, Align.MIN))
+        mushroom = mushroom.rotate(Axis.X, 90)  # lying on its side, cap toward -Y
+        with tempfile.TemporaryDirectory() as temp:
+            export_step(mushroom, str(Path(temp) / "m.step"))
+            parts = printcheck.load_parts(Path(temp) / "m.step")
+            orientation = printcheck.best_orientation(parts)
+            self.assertEqual(orientation["down"], [0.0, -1.0, 0.0])
+            self.assertEqual(orientation["best"]["support_area_mm2"], 0.0)
+            self.assertGreater(orientation["as_given"]["support_area_mm2"], 100)
+            oriented = printcheck.apply_rotation(parts, np.array(orientation["rotation_matrix"]))
+            self.assertEqual(printcheck.printcheck(oriented)["checks"][3]["status"], "pass")  # overhangs
+            printcheck.write_oriented(Path(temp) / "m.step", Path(temp) / "o.step", oriented, orientation)
+            box = import_step(str(Path(temp) / "o.step")).bounding_box()
+            self.assertAlmostEqual(box.min.Z, 0, places=4)
+            self.assertAlmostEqual(box.size.Z, 34, places=3)
+            printcheck.write_oriented(Path(temp) / "m.step", Path(temp) / "o.stl", oriented, orientation)
+            vertices, _ = printcheck.read_stl(Path(temp) / "o.stl")
+            self.assertAlmostEqual(float(vertices[:, 2].max()), 34, places=2)
 
     def test_dfm_finds_cnc_and_sheet_problems(self) -> None:
         from build123d import Axis, Box, Cylinder, Pos, export_step

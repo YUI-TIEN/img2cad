@@ -2,6 +2,12 @@
 
 All notable changes. Versions follow `VERSION`; plugin manifests carry the same number.
 
+## 0.15.0
+
+- **Hole and boss positions in the dimension gate.** `hole`/`boss` constraints take `axis` and `positions`; each expected centre must have its own feature whose axis passes within `position_tolerance` (default 0.05 mm). The check reports each offset.
+- **`img2cad printcheck --orient`.** Tries each axis and the largest flat faces as the bottom, picks the least support area (then bed contact, then height), and checks that orientation. `--write-oriented` saves it as STEP (parts and colours kept) or STL, resting on z = 0.
+- **Feature dimensions on drawings.** Holes and bosses are tagged with their diameter in the view along their axis and dimensioned from that view's lower-left edges (baseline). The report lists them as `feature_dimensions`.
+
 ## 0.14.0
 
 - **`img2cad send`.** Uploads G-code to OctoPrint, PrusaLink, Moonraker (Klipper) or a Bambu printer in LAN mode (FTPS; `--start` over MQTT with `paho-mqtt`). Upload is the default; printing needs `--start`. Keys come from `IMG2CAD_PRINTER_KEY`. Not exposed over MCP.
