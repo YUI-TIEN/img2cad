@@ -1,0 +1,221 @@
+{
+  "image": "reference.png",
+  "projection": "auto",
+  "initial": {
+    "elevation": 55
+  },
+  "features": [
+    {
+      "name": "saucer rim",
+      "type": "circle",
+      "center": [
+        0,
+        0
+      ],
+      "z": 12,
+      "radius": 60,
+      "points": [
+        [
+          76,
+          225
+        ],
+        [
+          150,
+          88
+        ],
+        [
+          172,
+          75
+        ],
+        [
+          425,
+          108
+        ],
+        [
+          465,
+          165
+        ],
+        [
+          479,
+          230
+        ],
+        [
+          440,
+          325
+        ],
+        [
+          380,
+          370
+        ],
+        [
+          280,
+          389
+        ],
+        [
+          88,
+          290
+        ]
+      ]
+    },
+    {
+      "name": "cup rim",
+      "type": "circle",
+      "center": "fit",
+      "z": "fit",
+      "radius": "fit",
+      "points": [
+        [
+          173,
+          100
+        ],
+        [
+          290,
+          18
+        ],
+        [
+          408,
+          100
+        ],
+        [
+          195,
+          47
+        ],
+        [
+          385,
+          47
+        ],
+        [
+          300,
+          207
+        ],
+        [
+          220,
+          190
+        ],
+        [
+          380,
+          185
+        ]
+      ]
+    },
+    {
+      "name": "cup foot",
+      "type": "circle",
+      "center": "cup rim",
+      "z": 4,
+      "radius": "fit",
+      "arc": "front",
+      "points": [
+        [
+          255,
+          280
+        ],
+        [
+          275,
+          283
+        ],
+        [
+          293,
+          284
+        ],
+        [
+          312,
+          283
+        ],
+        [
+          330,
+          281
+        ]
+      ]
+    },
+    {
+      "name": "crema",
+      "type": "circle",
+      "center": "cup rim",
+      "z": "fit",
+      "radius": "fit",
+      "arc": "back",
+      "points": [
+        [
+          203,
+          150
+        ],
+        [
+          220,
+          115
+        ],
+        [
+          287,
+          95
+        ],
+        [
+          355,
+          112
+        ],
+        [
+          371,
+          150
+        ]
+      ]
+    },
+    {
+      "name": "cup left side",
+      "type": "revolve_edge",
+      "axis": "cup rim",
+      "side": "left",
+      "points": [
+        [
+          175,
+          120
+        ],
+        [
+          181,
+          150
+        ],
+        [
+          187,
+          180
+        ],
+        [
+          199,
+          200
+        ]
+      ]
+    },
+    {
+      "name": "cup right side",
+      "type": "revolve_edge",
+      "axis": "cup rim",
+      "side": "right",
+      "points": [
+        [
+          406,
+          120
+        ],
+        [
+          400,
+          150
+        ],
+        [
+          394,
+          180
+        ],
+        [
+          389,
+          200
+        ]
+      ]
+    }
+  ],
+  "priors": {
+    "cup rim.center_y": [
+      0,
+      6
+    ]
+  },
+  "max_position_std": 0.03,
+  "notes": [
+    "prior: the cup stands in the saucer's well, so its axis is within about 6 mm of the saucer centre front-to-back; the photo alone cannot separate cup depth from cup height",
+    "max_position_std 0.03: with that prior the cup height is still only known to about 5 mm (3% of the scene); accepted for a visual approximation and reported as an estimate"
+  ]
+}

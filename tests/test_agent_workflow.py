@@ -31,6 +31,29 @@ class AgentWorkflowTests(unittest.TestCase):
         path.write_text(json.dumps(data), encoding="utf-8")
         return path
 
+    DECOMPOSITION = {
+        "parts": [{"name": "body", "technique": "loft", "size_source": "measured"}],
+        "detail_inventory": [{"detail": "tail tip", "part": "body", "handling": "modelled"},
+                             {"detail": "fur texture", "part": "body", "handling": "omitted", "reason": "below CAD resolution"}],
+        "passes": ["blockout"],
+    }
+
+    def pass_stage(self, stage: str = "blockout", checked: list | None = None, verdict: str = "pass") -> dict:
+        """Fabricate a passing staged preview and review it."""
+        state = agent_workflow.load_state(self.workflow)
+        previews = self.workflow / "previews"
+        previews.mkdir(exist_ok=True)
+        name = f"p{len(list(previews.iterdir())) + 1:03d}"
+        out = previews / name
+        out.mkdir()
+        (out / "model.py").write_text("x", encoding="utf-8")
+        (out / "comparison.png").write_text("c", encoding="utf-8")
+        (out / "run_report.json").write_text(json.dumps({"status": "passed", "model_source": {"path": "model.py"}, "comparison": {"path": "comparison.png"}}), encoding="utf-8")
+        (out / "stage.json").write_text(json.dumps({"stage": stage, "revision": agent_workflow.active(state)["id"]}), encoding="utf-8")
+        notes = self.json_file(f"pass-{name}.json", {"verdict": verdict, "checked": checked or ["overall proportions"], "mismatches": ["x"] if verdict == "revise" else []})
+        agent_workflow.pass_review(argparse.Namespace(workflow=self.workflow, preview=name, notes=notes))
+        return agent_workflow.active(agent_workflow.load_state(self.workflow))
+
     def record_inputs(self) -> None:
         observations = self.json_file("observations.json", {
             "observed": ["elongated body"], "inferred": ["hidden depth"], "unknowns": ["physical scale"],
@@ -39,9 +62,10 @@ class AgentWorkflowTests(unittest.TestCase):
         agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
         plan = self.json_file("plan.json", {
             "target_type": "visual_approximation", "goal": "recognizable editable approximation",
-            "geometry_plan": ["loft oval torso", "join four legs"], "constraints": [], "unknowns": ["scale"],
+            "geometry_plan": ["loft oval torso", "join four legs"], "constraints": [], "unknowns": ["scale"], **self.DECOMPOSITION,
         })
         agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
+        self.pass_stage()
 
     def add_geometry_gate(self) -> Path:
         self.record_inputs()
@@ -171,7 +195,7 @@ class AgentWorkflowTests(unittest.TestCase):
         agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
         plan = self.json_file("plan.json", {
             "target_type": "visual_approximation", "goal": "g", "geometry_plan": ["box"],
-            "constraints": [{"name": "length", "value": 10, "tolerance": True}], "unknowns": [],
+            "constraints": [{"name": "length", "value": 10, "tolerance": True}], "unknowns": [], **self.DECOMPOSITION,
         })
         with self.assertRaisesRegex(ValueError, "numeric value and nonnegative tolerance"):
             agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
@@ -263,7 +287,7 @@ class AgentWorkflowTests(unittest.TestCase):
         observations = self.json_file("observations.json", {"observed": [], "inferred": [], "unknowns": []})
         agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
         plan = self.json_file("plan.json", {"target_type": "visual_approximation", "goal": "g", "geometry_plan": ["box"], "constraints": [], "unknowns": [],
-                                            "allow_multiple_solids": "yes"})
+                                            "allow_multiple_solids": "yes", **self.DECOMPOSITION})
         with self.assertRaisesRegex(ValueError, "allow_multiple_solids"):
             agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
 
@@ -280,7 +304,7 @@ class AgentWorkflowTests(unittest.TestCase):
         agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
         plan = self.json_file("new-plan.json", {
             "target_type": "visual_approximation", "goal": "revise with rear view",
-            "geometry_plan": ["add rear profile detail"], "constraints": [], "unknowns": [],
+            "geometry_plan": ["add rear profile detail"], "constraints": [], "unknowns": [], **self.DECOMPOSITION,
         })
         agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
         state = agent_workflow.load_state(self.workflow)
@@ -290,6 +314,46 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertIsNone(second["stages"]["plan"].get("inherited_from"))
         self.assertEqual(second["stages"]["source_review"]["status"], "pending")
         self.assertEqual(second["stages"]["geometry"]["status"], "pending")
+
+    def test_visual_plan_requires_parts_detail_inventory_and_passes(self) -> None:
+        observations = self.json_file("observations.json", {"observed": [], "inferred": [], "unknowns": []})
+        agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
+        base = {"target_type": "visual_approximation", "goal": "g", "geometry_plan": ["box"], "constraints": [], "unknowns": []}
+        good = self.DECOMPOSITION
+        for change, message in (
+            ({"parts": []}, "nonempty parts"),
+            ({"parts": [{"name": "body", "technique": "loft", "size_source": "guessed"}]}, "size_source"),
+            ({"detail_inventory": []}, "nonempty detail_inventory"),
+            ({"detail_inventory": [{"detail": "eye", "part": "head", "handling": "painted"}]}, "must name one of the plan's parts"),
+            ({"detail_inventory": [{"detail": "eye", "part": "body", "handling": "omitted"}]}, "without a reason"),
+            ({"passes": ["detail", "blockout"]}, "order"),
+            ({"passes": []}, "passes"),
+        ):
+            plan = self.json_file("plan.json", {**base, **good, **change})
+            with self.assertRaisesRegex(ValueError, message):
+                agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
+
+    def test_passes_gate_source_review_and_cannot_be_skipped(self) -> None:
+        observations = self.json_file("observations.json", {"observed": ["o"], "inferred": [], "unknowns": [], "evidence": [{"claim": "o", "source": "s"}]})
+        agent_workflow.record_observations(argparse.Namespace(workflow=self.workflow, file=observations))
+        plan = self.json_file("plan.json", {"target_type": "visual_approximation", "goal": "g", "geometry_plan": ["box"], "constraints": [], "unknowns": [],
+                                            **{**self.DECOMPOSITION, "passes": ["blockout", "detail"]}})
+        agent_workflow.record_plan(argparse.Namespace(workflow=self.workflow, file=plan))
+        model = self.root / "model.py"
+        model.write_text("from build123d import Sphere\ndef build_model():\n    return Sphere(10)\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "staged passes not complete: blockout, detail"):
+            agent_workflow.source_review(argparse.Namespace(workflow=self.workflow, model=model, inspection_note="n"))
+        with self.assertRaisesRegex(ValueError, "cannot be skipped"):
+            agent_workflow.preview(argparse.Namespace(workflow=self.workflow, model=model, strict_source=False, stage="detail", cad_python=None, reference_view=None, reference_mask=None))
+        revision = self.pass_stage("blockout", verdict="revise")
+        self.assertEqual(revision["open_passes"], ["blockout", "detail"])
+        self.assertIn("preview --stage blockout", agent_workflow.next_action(revision))
+        self.pass_stage("blockout")
+        with self.assertRaisesRegex(ValueError, "unchecked: tail tip"):
+            self.pass_stage("detail", checked=["overall proportions"])
+        revision = self.pass_stage("detail", checked=["tail tip"])
+        self.assertEqual(revision["open_passes"], [])
+        agent_workflow.source_review(argparse.Namespace(workflow=self.workflow, model=model, inspection_note="n"))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,102 @@
+"""img2cad camera recovers a known camera and refuses an under-constrained fit; img2cad mask."""
+
+from __future__ import annotations
+
+import json
+import math
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+try:
+    import scipy  # noqa: F401
+    import camera_fit
+    import make_mask
+except ImportError:  # pragma: no cover - CAD environment only
+    camera_fit = None
+
+
+@unittest.skipIf(camera_fit is None, "needs scipy (run with .venv-cad/bin/python)")
+class CameraFitTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        Image.new("RGB", (640, 480), (30, 30, 30)).save(self.root / "photo.png")
+        # Truth: orthographic camera 40 degrees up, 0.5 mm/px.
+        self.truth = camera_fit.Camera(40.0, 0.0, 0.0, 0.5, (320.0, 300.0), None)
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def circle_pixels(self, cx, cy, z, r, angles):
+        pts = np.array([[cx + r * math.cos(a), cy + r * math.sin(a), z] for a in angles])
+        return self.truth.project(pts).round(2).tolist()
+
+    def write(self, features, **extra) -> Path:
+        path = self.root / "camera.json"
+        path.write_text(json.dumps({"image": "photo.png", "projection": "orthographic", "features": features, **extra}), encoding="utf-8")
+        return path
+
+    def test_recovers_a_known_camera_and_profile(self) -> None:
+        angles = [2 * math.pi * k / 10 for k in range(10)]
+        spec = self.write([
+            {"name": "base", "type": "circle", "center": [0, 0], "z": 0, "radius": 60, "points": self.circle_pixels(0, 0, 0, 60, angles)},
+            {"name": "top", "type": "circle", "center": [0, 0], "z": "fit", "radius": "fit", "points": self.circle_pixels(0, 0, 50, 30, angles)},
+            {"name": "side", "type": "revolve_edge", "axis": "top", "side": "right", "points": [self.truth.project(np.array([[40.0, 0, 20]]))[0].tolist()]},
+        ])
+        report = camera_fit.run(spec, self.root / "fit")
+        self.assertEqual(report["status"], "ok", report["problems"])
+        self.assertAlmostEqual(report["values"]["elevation"]["value"], 40.0, delta=0.2)
+        self.assertAlmostEqual(report["values"]["top.z"]["value"], 50.0, delta=0.5)
+        self.assertAlmostEqual(report["values"]["top.radius"]["value"], 30.0, delta=0.3)
+        edge = report["revolve_edges"]["side"][0]
+        self.assertAlmostEqual(edge["radius"], 40.0, delta=0.5)
+        self.assertAlmostEqual(edge["z"], 20.0, delta=0.8)
+        self.assertTrue((self.root / "fit/overlay.png").is_file())
+        self.assertIn("IMAGE_FRAME = ImageFrame(", (self.root / "fit/frame.py").read_text())
+
+    def test_refuses_when_depth_and_height_trade_off(self) -> None:
+        # The upper circle's centre is free, and only its front arc is seen:
+        # moving it back and down along the pixel rays fits as well, so its height is not pinned.
+        front = [math.pi * (1.2 + 0.15 * k) for k in range(5)]
+        spec = self.write([
+            {"name": "base", "type": "circle", "center": [0, 0], "z": 0, "radius": 60,
+             "points": self.circle_pixels(0, 0, 0, 60, [2 * math.pi * k / 8 for k in range(8)])},
+            {"name": "top", "type": "circle", "center": "fit", "z": "fit", "radius": 30, "arc": "front",
+             "points": self.circle_pixels(0, 0, 50, 30, front)},
+        ])
+        report = camera_fit.run(spec, self.root / "fit")
+        self.assertEqual(report["status"], "refused")
+        self.assertTrue(any("not pinned down" in problem for problem in report["problems"]), report["problems"])
+        self.assertFalse((self.root / "fit/frame.py").exists())
+
+    def test_priors_are_reported_as_assumptions(self) -> None:
+        angles = [2 * math.pi * k / 10 for k in range(10)]
+        spec = self.write([
+            {"name": "base", "type": "circle", "center": [0, 0], "z": 0, "radius": 60, "points": self.circle_pixels(0, 0, 0, 60, angles)},
+            {"name": "top", "type": "circle", "center": "fit", "z": 50, "radius": 30, "points": self.circle_pixels(0, 0, 50, 30, angles)},
+        ], priors={"top.center_y": [0, 3]})
+        report = camera_fit.run(spec, self.root / "fit")
+        self.assertIn("prior top.center_y", report["assumptions"])
+
+    def test_mask_unions_shapes_and_grows_seeds(self) -> None:
+        photo = np.zeros((100, 100, 3), dtype=np.uint8)
+        photo[:, :] = (200, 200, 200)
+        photo[20:60, 20:60] = (200, 40, 30)
+        Image.fromarray(photo).save(self.root / "m.png")
+        mask = make_mask.make_mask(self.root / "m.png", seeds=[(30, 30)])
+        self.assertEqual(int(mask.sum()), 40 * 40)
+        mask = make_mask.make_mask(self.root / "m.png", background_seeds=[(2, 2)], subtract=[[(20, 20), (30, 20), (30, 30), (20, 30)]])
+        self.assertLess(int(mask.sum()), 40 * 40)
+        self.assertTrue(mask[50, 50] and not mask[2, 2])
+
+
+if __name__ == "__main__":
+    unittest.main()
