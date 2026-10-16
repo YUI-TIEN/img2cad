@@ -3,6 +3,7 @@
 
     img2cad printcheck model.step
     img2cad printcheck model.stl --build-volume 220,220,250 --min-wall 0.8 --overhang 45
+    img2cad printcheck model.step --orient --write-oriented oriented.step   # find the best way down, then check it
 
 Checks, each with a status of pass, warn or fail:
 
@@ -14,6 +15,11 @@ Checks, each with a status of pass, warn or fail:
                  these need supports
 * `bed_contact`  area touching the bed (z = min); a tiny footprint tips over or detaches
 * `thin_walls`   sampled wall thickness along inward normals below `--min-wall`
+
+`--orient` tries putting each large flat face and each axis direction on the
+bed, scores every candidate by support area (overhangs off the bed), bed
+contact and height, and checks the best one. `--write-oriented` saves it
+(STEP keeps parts and colours; STL is one mesh) with its lowest point on z = 0.
 
 The mesh is the same tessellation the exports use, so results describe what a
 slicer will receive. Thickness is sampled (ray casts from up to 4000 triangle
@@ -206,6 +212,104 @@ def printcheck(parts: list[tuple[str, np.ndarray, np.ndarray]], build_volume: tu
     return {"status": worst, "triangles": int(len(triangles)), "checks": checks}
 
 
+def rotation_to_down(direction: np.ndarray) -> np.ndarray:
+    """Rotation matrix that turns `direction` into -Z (the face with this outward normal lands on the bed)."""
+    d = direction / np.linalg.norm(direction)
+    target = np.array([0.0, 0.0, -1.0])
+    axis = np.cross(d, target)
+    sin, cos = np.linalg.norm(axis), float(np.dot(d, target))
+    if sin < 1e-9:
+        return np.eye(3) if cos > 0 else np.diag([1.0, -1.0, -1.0])
+    k = axis / sin
+    cross = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    return np.eye(3) + sin * cross + (1 - cos) * cross @ cross
+
+
+def orientation_candidates(normals: np.ndarray, areas: np.ndarray, limit: int = 12) -> list[np.ndarray]:
+    """The six axis directions plus the normals of the largest flat regions."""
+    keys = np.round(normals, 2)
+    totals: dict[tuple[float, ...], float] = {}
+    for key, area in zip(map(tuple, keys), areas):
+        totals[key] = totals.get(key, 0.0) + float(area)
+    flats = [np.array(key, dtype=float) for key, _ in sorted(totals.items(), key=lambda item: -item[1])[:limit]]
+    axes = [np.array(v, dtype=float) for v in ((0, 0, -1), (0, 0, 1), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0))]
+    candidates: list[np.ndarray] = []
+    for direction in axes + flats:
+        direction = direction / np.linalg.norm(direction)
+        if not any(np.dot(direction, seen) > 0.999 for seen in candidates):
+            candidates.append(direction)
+    return candidates
+
+
+def score_orientation(vertices: np.ndarray, normals: np.ndarray, areas: np.ndarray, centres: np.ndarray, rotation: np.ndarray,
+                      build_volume: tuple[float, float, float], overhang_deg: float) -> dict[str, Any]:
+    rotated_vertices, rotated_normals, rotated_centres = vertices @ rotation.T, normals @ rotation.T, centres @ rotation.T
+    low, high = rotated_vertices.min(axis=0), rotated_vertices.max(axis=0)
+    size = high - low
+    band = max(0.05, float(size[2]) * 1e-3)
+    on_bed = (rotated_normals[:, 2] < -0.99) & (rotated_centres[:, 2] < low[2] + band)
+    overhang = (rotated_normals[:, 2] < -np.cos(np.radians(overhang_deg))) & ~on_bed
+    support, bed = float(areas[overhang].sum()), float(areas[on_bed].sum())
+    fits = all(size[i] <= build_volume[i] for i in range(3))
+    # Support area dominates; a bigger footprint and a lower part break ties.
+    score = support - 0.1 * bed + 0.01 * float(size[2]) * float(np.sqrt(areas.sum())) + (0 if fits else 1e12)
+    return {"support_area_mm2": round(support, 2), "bed_area_mm2": round(bed, 2), "height_mm": round(float(size[2]), 3),
+            "fits": fits, "score": score}
+
+
+def best_orientation(parts: list[tuple[str, np.ndarray, np.ndarray]], build_volume: tuple[float, float, float] = (220, 220, 250),
+                     overhang_deg: float = 45) -> dict[str, Any]:
+    offsets = np.cumsum([0] + [len(vertices) for _, vertices, _ in parts])
+    vertices = np.concatenate([part[1] for part in parts])
+    triangles = np.concatenate([part[2] + offset for part, offset in zip(parts, offsets)])
+    normals, areas, centres = triangle_geometry(vertices, triangles)
+    ranked = []
+    for direction in orientation_candidates(normals, areas):
+        rotation = rotation_to_down(direction)
+        ranked.append({"down": [round(float(v), 4) for v in direction], "rotation": rotation,
+                       **score_orientation(vertices, normals, areas, centres, rotation, build_volume, overhang_deg)})
+    ranked.sort(key=lambda item: item["score"])
+    current = score_orientation(vertices, normals, areas, centres, np.eye(3), build_volume, overhang_deg)
+    best = ranked[0]
+    axis = np.cross(np.array(best["down"]), [0.0, 0.0, -1.0])
+    angle = float(np.degrees(np.arccos(np.clip(np.dot(best["down"], [0.0, 0.0, -1.0]), -1, 1))))
+    if np.linalg.norm(axis) < 1e-9:
+        axis = np.array([1.0, 0.0, 0.0])
+    clean = lambda item: {k: v for k, v in item.items() if k not in ("rotation", "score")}  # noqa: E731
+    return {"down": best["down"], "rotate_axis": [round(float(v), 4) for v in axis / np.linalg.norm(axis)], "rotate_deg": round(angle, 3),
+            "rotation_matrix": [[round(float(v), 6) for v in row] for row in best["rotation"]], "best": clean(best),
+            "as_given": {k: v for k, v in current.items() if k != "score"}, "candidates": [clean(item) for item in ranked[:5]]}
+
+
+def apply_rotation(parts: list[tuple[str, np.ndarray, np.ndarray]], rotation: np.ndarray) -> list[tuple[str, np.ndarray, np.ndarray]]:
+    rotated = [(name, vertices @ rotation.T, triangles) for name, vertices, triangles in parts]
+    floor = min(float(vertices[:, 2].min()) for _, vertices, _ in rotated)
+    return [(name, vertices - [0.0, 0.0, floor], triangles) for name, vertices, triangles in rotated]
+
+
+def write_oriented(source: Path, out: Path, parts: list[tuple[str, np.ndarray, np.ndarray]], orientation: dict[str, Any]) -> None:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.suffix.lower() == ".stl":
+        vertices = np.concatenate([p[1] for p in parts])
+        offsets = np.cumsum([0] + [len(p[1]) for p in parts])
+        triangles = np.concatenate([p[2] + offset for p, offset in zip(parts, offsets)])
+        normals, _, _ = triangle_geometry(vertices, triangles)
+        with out.open("wb") as handle:
+            handle.write(b"img2cad oriented".ljust(80, b" ") + struct.pack("<I", len(triangles)))
+            for normal, triangle in zip(normals, triangles):
+                handle.write(struct.pack("<12fH", *normal, *vertices[triangle].reshape(-1), 0))
+        return
+    if out.suffix.lower() not in (".step", ".stp") or source.suffix.lower() == ".stl":
+        raise ValueError("--write-oriented takes .stl, or .step for a STEP input")
+    from build123d import Axis, Pos, export_step, import_step
+
+    shape = import_step(str(source))
+    if orientation["rotate_deg"] > 1e-9:
+        shape = shape.rotate(Axis((0, 0, 0), tuple(orientation["rotate_axis"])), orientation["rotate_deg"])
+    shape = Pos(0, 0, -shape.bounding_box().min.Z) * shape
+    export_step(shape, str(out))
+
+
 def check_file(path: Path, build_volume: tuple[float, float, float] = (220, 220, 250), min_wall: float = 0.8,
                overhang_deg: float = 45, tolerance: float | None = None) -> dict[str, Any]:
     return {"file": str(path), **printcheck(load_parts(path, tolerance), build_volume, min_wall, overhang_deg)}
@@ -225,8 +329,24 @@ def main() -> int:
     parser.add_argument("--min-wall", type=float, default=0.8, help="thinnest printable wall in mm (about 2 nozzle widths)")
     parser.add_argument("--overhang", type=float, default=45, help="steepest unsupported overhang, degrees from vertical")
     parser.add_argument("--tolerance", type=float, help="STEP tessellation tolerance in mm")
+    parser.add_argument("--orient", action="store_true", help="find the orientation needing the least support and check that one")
+    parser.add_argument("--write-oriented", type=Path, help="with --orient: save the oriented model (.step for STEP input, or .stl)")
     args = parser.parse_args()
-    result = check_file(args.file, args.build_volume, args.min_wall, args.overhang, args.tolerance)
+    if args.write_oriented and not args.orient:
+        parser.error("--write-oriented needs --orient")
+    if not args.orient:
+        result = check_file(args.file, args.build_volume, args.min_wall, args.overhang, args.tolerance)
+    else:
+        parts = load_parts(args.file, args.tolerance)
+        orientation = best_orientation(parts, args.build_volume, args.overhang)
+        oriented = apply_rotation(parts, np.array(orientation["rotation_matrix"]))
+        result = {"file": str(args.file), "orientation": orientation, **printcheck(oriented, args.build_volume, args.min_wall, args.overhang)}
+        if args.write_oriented:
+            try:
+                write_oriented(args.file, args.write_oriented, oriented, orientation)
+            except ValueError as error:
+                parser.error(str(error))
+            result["oriented_file"] = str(args.write_oriented)
     print(json.dumps(result, indent=2))
     return 1 if result["status"] == "fail" else 0
 

@@ -123,6 +123,9 @@ class DeliverableTests(unittest.TestCase):
         self.assertEqual(report["overall_mm"], {"x": 80.0, "y": 50.0, "z": 6.0})
         self.assertIn("4x hole D6 along Z at (-32, -17, 0), (-32, 17, 0), (32, -17, 0), (32, 17, 0)", report["notes"])
         self.assertIn("1x hole D10 along Z at (0, 0, 0)", report["notes"])
+        placed = sorted((f["diameter"], *f["from_datum"]) for f in report["feature_dimensions"])
+        self.assertEqual(placed, [(6.0, 8.0, 8.0), (6.0, 8.0, 42.0), (6.0, 72.0, 8.0), (6.0, 72.0, 42.0), (10.0, 40.0, 25.0)])
+        self.assertTrue(all(f["view"] == "top" for f in report["feature_dimensions"]))
         svg = (self.root / "drawing/drawing.svg").read_text(encoding="utf-8")
         self.assertIn("<svg", svg)
         self.assertGreater(svg.count("<path"), 20)
@@ -136,6 +139,14 @@ class DeliverableTests(unittest.TestCase):
             self.assertEqual(report["status"], "pass", report)
             thin = next(check for check in report["checks"] if check["check"] == "thin_walls")
             self.assertGreater(thin["min_mm"], 4.0)
+        # --orient puts the plate flat (it already is) and --write-oriented keeps it a valid STEP on z = 0.
+        oriented = self.root / "oriented.step"
+        result = self.cli("printcheck", str(self.step), "--orient", "--write-oriented", str(oriented))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["orientation"]["best"]["support_area_mm2"], 0.0)
+        self.assertAlmostEqual(report["orientation"]["best"]["height_mm"], 6.0, places=2)
+        self.assertTrue(oriented.exists())
         # An open box (five faces) is not watertight.
         sys.path.insert(0, str(ROOT / "scripts"))
         import numpy as np

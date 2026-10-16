@@ -228,6 +228,29 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertTrue(agent_workflow.check_constraint({"name": "volume", "value": 23000, "tolerance": 150}, inspection)["passed"])
         self.assertTrue(agent_workflow.check_constraint({"name": "length", "value": 80}, inspection)["passed"])
 
+    def test_hole_positions_are_checked(self) -> None:
+        corners = [[-32, -17], [-32, 17], [32, -17], [32, 17]]
+        features = [{"kind": "hole", "diameter": 6.0, "full": True, "axis_direction": [0, 0, 1], "axis_point": [x, y, 0]} for x, y in corners]
+        features.append({"kind": "hole", "diameter": 6.0, "full": True, "axis_direction": [1, 0, 0], "axis_point": [0, 0, 3]})
+        inspection = {"cylindrical_features": features}
+        for bad in ({"name": "hole", "diameter": 6, "count": 4, "positions": corners[:3]},
+                    {"name": "hole", "diameter": 6, "count": 1, "positions": [[1, 2, 3, 4]]},
+                    {"name": "hole", "diameter": 6, "count": 4, "axis": "w"},
+                    {"name": "hole", "diameter": 6, "count": 4, "positions": corners, "position_tolerance": -1}):
+            with self.assertRaises(ValueError):
+                agent_workflow.validate_constraint(bad)
+        good = {"name": "hole", "diameter": 6, "count": 4, "axis": "z", "positions": list(reversed(corners)), "position_tolerance": 0.05}
+        agent_workflow.validate_constraint(good)
+        result = agent_workflow.check_constraint(good, inspection)
+        self.assertTrue(result["passed"], result)
+        self.assertNotIn("not checked", result["scope"])
+        moved = agent_workflow.check_constraint({**good, "positions": [[-32, -17], [-32, 17], [32, -17], [32, 15]]}, inspection)
+        self.assertFalse(moved["passed"])
+        self.assertAlmostEqual(moved["positions"][3]["offset"], 2.0)
+        side = {"name": "hole", "diameter": 6, "count": 1, "axis": "x", "positions": [[0, 3]]}  # (y, z) across X
+        self.assertTrue(agent_workflow.check_constraint(side, inspection)["passed"])
+        self.assertTrue(agent_workflow.check_constraint({**side, "positions": [[50, 0, 3]]}, inspection)["passed"])
+
     def acceptable_notes(self) -> Path:
         return self.json_file("review.json", {
             "reviewer": "agent", "verdict": "acceptable", "source_view": "side view vs CAD side panel",

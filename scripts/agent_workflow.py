@@ -221,6 +221,37 @@ def record_observations(args: argparse.Namespace) -> None:
 AXIS_FOR = {"length": "x", "width": "y", "height": "z", "x": "x", "y": "y", "z": "z"}
 FEATURE_CONSTRAINTS = {"hole", "boss"}
 DEFAULT_TOLERANCE = 0.02
+DEFAULT_POSITION_TOLERANCE = 0.05
+
+
+def _point_3d(point: list[float], axis: str) -> list[float]:
+    """[a, b] in the plane across `axis` (x: (y, z), y: (x, z), z: (x, y)) -> a model point; [x, y, z] as is."""
+    if len(point) == 3:
+        return [float(v) for v in point]
+    a, b = float(point[0]), float(point[1])
+    return {"x": [0.0, a, b], "y": [a, 0.0, b], "z": [a, b, 0.0]}[axis]
+
+
+def _axis_distance(point: list[float], feature: dict[str, Any]) -> float:
+    """Distance from a point to a feature's axis line (the position along the axis does not matter)."""
+    origin, direction = feature["axis_point"], feature["axis_direction"]
+    offset = [point[i] - origin[i] for i in range(3)]
+    along = sum(offset[i] * direction[i] for i in range(3))
+    return math.sqrt(sum((offset[i] - along * direction[i]) ** 2 for i in range(3)))
+
+
+def match_positions(expected: list[list[float]], features: list[dict[str, Any]], tolerance: float) -> list[dict[str, Any]]:
+    """Pair each expected axis position with the nearest unused feature (closest pairs first)."""
+    pairs = sorted((_axis_distance(point, feature), i, j) for i, point in enumerate(expected) for j, feature in enumerate(features))
+    used_points, used_features, result = set(), set(), {}
+    for distance, i, j in pairs:
+        if i in used_points or j in used_features:
+            continue
+        used_points.add(i)
+        used_features.add(j)
+        result[i] = {"expected": expected[i], "measured_axis_point": features[j]["axis_point"], "offset": round(distance, 4),
+                     "passed": distance <= tolerance}
+    return [result.get(i, {"expected": expected[i], "measured_axis_point": None, "offset": None, "passed": False}) for i in range(len(expected))]
 
 
 def finite_number(value: Any) -> bool:
@@ -238,6 +269,17 @@ def validate_constraint(constraint: Any) -> None:
         count = constraint.get("count")
         if not finite_number(constraint.get("diameter")) or constraint["diameter"] <= 0 or not isinstance(count, int) or isinstance(count, bool) or count < 1:
             raise ValueError(f"{name} constraints need positive diameter and integer count >= 1")
+        axis = constraint.get("axis")
+        if axis is not None and axis not in ("x", "y", "z"):
+            raise ValueError(f"{name} axis must be x, y or z")
+        positions = constraint.get("positions")
+        if positions is not None:
+            if (not isinstance(positions, list) or len(positions) != count
+                    or any(not isinstance(p, list) or len(p) not in (2, 3) or not all(finite_number(v) for v in p) for p in positions)):
+                raise ValueError(f"{name} positions must list `count` points, each [a, b] (in the plane across `axis`, default z) or [x, y, z]")
+            tolerance = constraint.get("position_tolerance", DEFAULT_POSITION_TOLERANCE)
+            if not finite_number(tolerance) or tolerance < 0:
+                raise ValueError(f"{name} position_tolerance must be a nonnegative number")
         return
     if not finite_number(constraint.get("value")):
         raise ValueError("each bound constraint needs numeric value and nonnegative tolerance")
@@ -251,8 +293,20 @@ def check_constraint(constraint: dict[str, Any], inspection: dict[str, Any]) -> 
     if name in FEATURE_CONSTRAINTS:
         diameter = float(constraint["diameter"])
         matches = [item for item in inspection.get("cylindrical_features", []) if item["kind"] == name and item.get("full") and abs(item["diameter"] - diameter) <= tolerance]
-        return {"name": name, "diameter": diameter, "tolerance": tolerance, "expected": constraint["count"], "measured": len(matches), "passed": len(matches) == constraint["count"],
-                "scope": "full cylindrical features grouped by axis; position is not checked"}
+        axis = constraint.get("axis")
+        if axis:
+            index = "xyz".index(axis)
+            matches = [item for item in matches if abs(abs(item["axis_direction"][index]) - 1) < 1e-3]
+        result = {"name": name, "diameter": diameter, "tolerance": tolerance, "expected": constraint["count"], "measured": len(matches),
+                  "passed": len(matches) == constraint["count"], "scope": "full cylindrical features grouped by axis"
+                  + (f" along {axis}" if axis else "") + ("; position is not checked" if not constraint.get("positions") else "")}
+        if constraint.get("positions"):
+            position_tolerance = float(constraint.get("position_tolerance", DEFAULT_POSITION_TOLERANCE))
+            expected = [_point_3d(point, axis or "z") for point in constraint["positions"]]
+            positions = match_positions(expected, matches, position_tolerance)
+            result.update({"position_tolerance": position_tolerance, "positions": positions,
+                           "passed": result["passed"] and all(item["passed"] for item in positions)})
+        return result
     expected = float(constraint["value"])
     if name == "volume":
         measured = float(inspection["volume"])
