@@ -50,7 +50,7 @@ The tessellation tolerance defaults to 1/2000 of the model diagonal (at least 0.
 ## Engineering drawing
 
 ```sh
-img2cad drawing model.step out/ --name "Mounting plate"      # out/drawing.svg + out/drawing.dxf
+img2cad drawing model.step out/ --name "Mounting plate"      # out/drawing.svg, drawing.dxf and drawing.pdf
 ```
 
 Third-angle sheet: front view (looking along +Y), top view above it, right view beside it; visible edges solid, hidden edges dashed; overall width, height and depth dimensioned; and a note block listing every full cylindrical hole/boss with diameter, axis and position. Check the hole table against the source drawing: it is the fastest way to catch a hole in the wrong place, which the dimension gate does not check. The DXF opens in any 2D CAD tool for further dimensioning.

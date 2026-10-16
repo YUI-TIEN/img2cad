@@ -155,6 +155,22 @@ It fits orthographic and perspective cameras and keeps perspective only when it 
 | Bent tube, rail, or cable | Path in `BuildLine` + profile sketch → `sweep` | (none yet) |
 | Thin flat parts (fins, ribs, blades) | `Polygon` on the matching plane → `extrude(amount=t/2, both=True)` | `examples/fish` |
 | Quick blocky stand-in | Scaled `Sphere`/`Cylinder` primitives; fuse them (a `Compound` needs `allow_multiple_solids`) | `benchmark/cases/visual-pose-dog` |
+| Lattice, truss, tower | Lofted frustum shell, then cut triangular X-brace windows through its faces (one solid, no strut fusing) | `examples/falcon9-pad` |
+| Two or three views available (front/side/top) | `img2cad hull` → visual-hull blockout from the silhouettes, then carve the concavities | (tool; see SKILL.md) |
+
+## Category checklists
+
+Use these to fill the plan's `detail_inventory`. Each list covers what usually makes a subject recognisable and what agents tend to skip. Copy the items that apply, then add what this image shows.
+
+- **Mechanical part / drawing:** every dimension and callout on the drawing, hole count and positions (check them in the drawing's hole table: `img2cad drawing`), chamfers and fillets, counterbores and countersinks, threads (modelled as plain bores unless asked), datum faces.
+- **Container / tableware:** wall thickness, rim shape (rolled, flat, lipped), foot ring, handle attachment points and cross-section, inner colour or glaze, liquid level, spout.
+- **Vehicle / machine:** wheel count, diameter and track width, axle positions, ground clearance, body panel breaks, windows, lights, mirrors, the side that faces the camera versus the hidden side.
+- **Animal / creature:** body plan (four legs, two legs, wings, none), leg joints and their bend direction, head-to-body ratio, eyes (colour and position), ears, tail, markings (trace and project them).
+- **Character / figurine:** head-to-height ratio, eye spacing and size, mouth shape, hair or headwear silhouette, hands, base or stand, every painted marking (trace them; don't hand-place).
+- **Building / structure:** storey count and heights, roof type and overhang, window and door grid, structural repetition (bays, columns, truss panels), base or plinth.
+- **Electronics / product:** case outline and corner radii, button and port positions, screen or lens, seams and parting lines, logos (paint), feet.
+
+For each item decide `modelled`, `painted` (a decal) or `omitted` with a reason. Omitting is fine; silently skipping is what the gate prevents.
 
 ## Reading sizes from an image
 

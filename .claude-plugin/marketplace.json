@@ -1,18 +1,30 @@
 {
   "name": "img2cad",
-  "owner": {"name": "YUI-TIEN", "url": "https://github.com/YUI-TIEN"},
+  "description": "img2cad: turn images, photos, sketches and drawings into editable, coloured CAD with a staged, self-checking agent workflow.",
+  "owner": {
+    "name": "YUI-TIEN",
+    "url": "https://github.com/YUI-TIEN"
+  },
   "plugins": [
     {
       "name": "img2cad",
       "source": "./",
       "description": "Turn images, photos, sketches and drawings into editable, coloured CAD with a staged, self-checking agent workflow.",
-      "version": "0.11.0",
-      "author": {"name": "YUI-TIEN"},
+      "version": "0.12.0",
+      "author": {
+        "name": "YUI-TIEN"
+      },
       "homepage": "https://yui-tien.github.io/img2cad/",
       "repository": "https://github.com/YUI-TIEN/img2cad",
       "license": "MIT",
       "category": "design",
-      "tags": ["cad", "image-to-cad", "build123d", "step", "3d-printing"]
+      "tags": [
+        "cad",
+        "image-to-cad",
+        "build123d",
+        "step",
+        "3d-printing"
+      ]
     }
   ]
 }

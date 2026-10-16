@@ -232,3 +232,33 @@ def projected_decal(surface, outline_px: Sequence[Point2], frame: ImageFrame, th
     if not front:
         raise ValueError("decal outline does not cover the camera side of the surface; check the frame and outline")
     return front[0] if len(front) == 1 else Compound(children=front)
+
+
+_HULL_PLANES = {
+    # view: (screen right, screen up, toward camera) -- the comparison panels' conventions, Z up
+    "front": ((1, 0, 0), (0, 0, 1), (0, -1, 0)),
+    "right": ((0, 1, 0), (0, 0, 1), (1, 0, 0)),
+    "top": ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+}
+
+
+def visual_hull(views: Sequence[dict]):
+    """Intersection of silhouettes extruded through the model (a blockout).
+
+    Each view is {"view": "front"|"right"|"top", "outline_mm": [[right, up], ...]}
+    in that view's screen millimetres (see scripts/visual_hull.py). The result
+    contains the object but fills every concavity no view sees.
+    """
+    if len(views) < 2:
+        raise ValueError("a visual hull needs at least two views")
+    reach = 4 * max(abs(value) for view in views for point in view["outline_mm"] for value in point) + 1
+    hull = None
+    for view in views:
+        right, _, toward = _HULL_PLANES[view["view"]]
+        plane = Plane(origin=(0, 0, 0), x_dir=right, z_dir=toward)
+        prism = extrude(plane * Polygon(*[tuple(p) for p in view["outline_mm"]], align=None), amount=reach, both=True)
+        hull = prism if hull is None else hull & prism
+    solids = hull.solids()
+    if not solids:
+        raise ValueError("the silhouettes do not overlap; check each view's origin_px and mm_per_px")
+    return max(solids, key=lambda solid: solid.volume) if len(solids) > 1 else solids[0]

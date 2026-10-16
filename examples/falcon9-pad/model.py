@@ -22,21 +22,21 @@ S = 246.0  # mm per px
 IMAGE_FRAME = ImageFrame(mm_per_px=S, origin_px=(321.5, 405.0))  # rocket base on the mount top
 
 # Falcon 9 v1.1 (published dimensions, mm): (radius, z) half-profile from the base up.
-CORE_R = 1830.0
-FAIRING_R = 2600.0
+CORE_R = 1830.0  # [1500, 2200] first-stage radius, mm
+FAIRING_R = 2600.0  # [2000, 3000] fairing radius, mm
 STAGE1_TOP = 47000.0  # first stage + interstage
 FAIRING_BASE = 55300.0
-HEIGHT = 68400.0
+HEIGHT = 68400.0  # [50000, 80000] rocket height, mm
 
 TOWER_X = (-32300.0, 32800.0)  # measured axes: image x 190 and 455
 MAST_X = (-30100.0, 30600.0)  # masts stand on the platforms' inner edges: image x 199 and 446
-TOWER_BASE_HALF = 4300.0
-TOWER_TOP_HALF = 1850.0
+TOWER_BASE_HALF = 4300.0  # [3000, 6000] lightning tower half-width at the base, mm
+TOWER_TOP_HALF = 1850.0  # [1000, 3000] tower half-width at the platform, mm
 TOWER_TOP_Z = 53900.0  # platform, image row 186: (405 - 186) * S
 MAST_TOP_Z = 70300.0  # image row 119
-BAYS = 9
-WALL = 450.0  # shell wall = strut depth
-STRUT = 380.0  # strut width left between windows
+BAYS = 9  # [4, 14] X-braced bays per tower
+WALL = 450.0  # [200, 900] tower strut depth, mm (shell wall = strut depth)
+STRUT = 380.0  # [200, 800] strut width, mm (strut width left between windows)
 
 MOUNT = (27500.0, 9000.0, 5400.0)  # launch mount: image x 268..380, rows 405..427
 SLAB = (80000.0, 16000.0, 1000.0)
