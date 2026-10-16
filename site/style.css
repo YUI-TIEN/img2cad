@@ -153,7 +153,7 @@ main section { padding: 76px max(16px, calc((100vw - 1160px) / 2)); }
 .steps li:hover { transform: translateY(-3px); }
 .steps p { color: var(--ink-2); font-size: .93rem; margin: 0 0 14px; flex: 1; }
 .steps li > code { align-self: flex-start; color: var(--accent); background: var(--accent-soft); padding: 3px 9px; border-radius: 8px; }
-.onboarding .prompt { margin: 0 0 14px; padding: 16px; border-radius: 14px; background: var(--code-bg); color: var(--code-text); font-size: .88rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.onboarding .prompt { position: relative; margin: 0 0 14px; padding: 62px 16px 16px; border-radius: 14px; background: var(--code-bg); color: var(--code-text); font-size: .88rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .onboarding .prompt code { font-size: inherit; }
 .onboarding .step-link { flex: 0; margin-top: auto; margin-bottom: 0; }
 .onboarding .step-link a { font-weight: 600; }
@@ -213,8 +213,18 @@ main section { padding: 76px max(16px, calc((100vw - 1160px) / 2)); }
 .tabs button:hover { background: var(--field); }
 .tabs button[aria-selected="true"] { background: rgba(255, 255, 255, .92); box-shadow: 0 3px 8px rgba(0, 0, 0, .12), 0 0 0 .5px rgba(0, 0, 0, .04); }
 @media (prefers-color-scheme: dark) { .tabs button[aria-selected="true"] { background: rgba(99, 99, 102, .9); } }
-.tab-panels pre { --glass-tint: rgba(24, 24, 30, .78); --glass-tint-2: rgba(24, 24, 30, .66); --glass-rim: rgba(255, 255, 255, .22); color: var(--code-text); padding: 20px 22px; border-radius: 20px; overflow-x: auto; margin: 0 0 24px; font-size: .9rem; line-height: 1.6; }
+.tab-panels pre { --glass-tint: rgba(24, 24, 30, .78); --glass-tint-2: rgba(24, 24, 30, .66); --glass-rim: rgba(255, 255, 255, .22); color: var(--code-text); padding: 64px 22px 20px; border-radius: 20px; overflow-x: auto; margin: 0 0 24px; font-size: .9rem; line-height: 1.6; }
 pre code { font-size: inherit; }
+.copy-button {
+  position: absolute; top: 12px; right: 12px; min-height: 40px; min-width: 76px;
+  border: 1px solid rgba(255, 255, 255, .3); border-radius: 10px;
+  background: rgba(255, 255, 255, .14); color: #fff;
+  padding: 7px 12px; font: 600 .82rem var(--font); line-height: 1.2;
+  cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s;
+}
+.copy-button:hover { background: rgba(255, 255, 255, .24); }
+.copy-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.copy-button[data-state="copied"] { border-color: #7ee2a0; color: #a7f0ba; }
 
 /* ---------- Agent links ---------- */
 .links { list-style: none; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
