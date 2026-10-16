@@ -10,7 +10,7 @@
       "name": "img2cad",
       "source": "./",
       "description": "Turn images, photos, sketches and drawings into editable, coloured CAD with a staged, self-checking agent workflow.",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "author": {
         "name": "YUI-TIEN"
       },

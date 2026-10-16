@@ -26,7 +26,7 @@ You get a parametric `model.py` you can keep editing, plus **STEP** (named, colo
 - 📷 **Any input** — product photos, several photos from any angle (visual hull from fitted cameras), hand sketches, dimensioned drawings.
 - ✂️ **Masks in one click** — colour seeds, polygons, or optional [SAM 2](https://github.com/facebookresearch/sam2) segmentation.
 - 🎛️ **Live parameter panel** — `img2cad view model.py` opens a 3D viewer with sliders; changes rebuild locally and save back to the source.
-- 🏭 **Ready to make** — 3D-print check, slicer hand-off, CNC / sheet-metal DFM, engineering drawings (SVG/DXF), standard parts library, URDF for robots.
+- 🏭 **Ready to make** — 3D-print check, slicing and sending to your printer, CNC / sheet-metal DFM with flat blanks, engineering drawings (SVG/DXF/PDF), a standard parts library, URDF / SDF / MJCF for robots.
 
 ## Install
 
@@ -104,9 +104,10 @@ img2cad view runs/mug/model.py      # 3D viewer + parameter sliders
 | `drawing model.step out/` | three-view SVG/DXF with dimensions and a hole table |
 | `printcheck model.step` | watertight, overhangs, bed contact, thin walls, build volume |
 | `slice model.3mf --out x.gcode` | G-code via installed PrusaSlicer / SuperSlicer / OrcaSlicer / Bambu Studio |
-| `dfm model.step --process cnc\|sheet` | CNC: sharp internal corners, tool radii, deep holes, undercuts · sheet: thickness, holes, bends |
-| `parts make screw --size M3 --length 12` | ISO screws, nuts, washers, bearings, NEMA 17, 2020 extrusion |
-| `urdf model.step --out robot/` | URDF + meshes with joints and exact mass/inertia |
+| `send x.gcode --printer octoprint --host …` | upload to OctoPrint, PrusaLink, Moonraker (Klipper) or Bambu LAN; `--start` prints |
+| `dfm model.step --process cnc\|sheet` | CNC: sharp internal corners, tool radii, deep holes, setups · sheet: thickness, hole-to-bend, bends, flat blank |
+| `parts make screw --size M3 --length 12` | ISO screws (real threads with `--threads`), nuts, washers, bearings, spur gears, GT2 pulleys, MGN rails, servos, NEMA 17, 2020 extrusion |
+| `urdf model.step --out robot/` | URDF, SDF or MuJoCo MJCF + meshes with joints and exact mass/inertia |
 | `mcp` · `doctor` · `version` | MCP server (stdio) · environment check · version |
 
 `img2cad <command> --help` shows every option. Full CLI reference: [docs/WORKFLOW.md](docs/WORKFLOW.md).
@@ -132,7 +133,7 @@ Text-to-CAD tools start from words; mesh generators give you triangles. img2cad 
 - [docs/DESIGN.md](docs/DESIGN.md) — problem, design principles, acceptance criteria
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — workflow CLI reference and learning material
 - [skills/img2cad/SKILL.md](skills/img2cad/SKILL.md) — the agent contract · [MODELING.md](skills/img2cad/MODELING.md) · [LESSONS.md](skills/img2cad/LESSONS.md)
-- [skills/cad-output/SKILL.md](skills/cad-output/SKILL.md) — drawings, printing, DFM, parts, URDF
+- [skills/cad-output/SKILL.md](skills/cad-output/SKILL.md) — drawings, printing, DFM, parts, robots
 - [benchmark/](benchmark/README.md) · [CHANGELOG](CHANGELOG.md) · [ROADMAP](ROADMAP.md) · [CONTRIBUTING](CONTRIBUTING.md) · [SECURITY](SECURITY.md)
 
 > **Status:** beta. Reviews are agent reviews (`human_acceptance: not_verified`); check the measured geometry and previews before you manufacture anything.

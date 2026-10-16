@@ -13,12 +13,18 @@ CNC (3-axis, tool along Z, part machined from the top):
 * `tiny_holes`             holes under 1 mm diameter (drill, not mill; often impractical)
 * `undercut_faces`         faces whose outward normal points down (-Z) above the bottom:
                            they need a second setup or a 5-axis machine
+* `setups`                 the fewest 3-axis setups (+-X, +-Y, +-Z) that reach every face and
+                           hole, ignoring fixturing and occlusion by other features
 
 Sheet metal:
 
 * `uniform_thickness`      sampled wall thickness agrees with the sheet thickness
 * `small_holes`            holes smaller than the thickness (punching limit)
 * `tight_bends`            inside bend radii under the thickness
+* `hole_to_bend`           holes closer to a bend than 2 x thickness + inside radius (they distort)
+* `flat_blank`             for parts whose bends share one axis: developed length with
+                           `--k-factor` (default 0.44), blank size, and each bend's angle,
+                           allowance and deduction (hole positions are not unfolded)
 
 Each check has a status (pass / warn / fail), a detail line and evidence
 (locations in model millimetres). Rules are common shop guidance, not a
@@ -129,10 +135,47 @@ def cnc_checks(solid, tool_radius: float) -> list[dict[str, Any]]:
     check("undercut_faces", "warn" if under else "pass",
           f"{len(under)} downward-facing faces above the bottom need another setup (flip the part) or 5-axis"
           if under else "every face is reachable from +Z (one setup plus the bottom)", under)
+
+    plan, unreachable = plan_setups(solid, cylinders)
+    status = "fail" if unreachable else ("pass" if len(plan) <= 2 else "warn")
+    detail = (f"{len(unreachable)} faces are not reachable from any axis direction (5-axis or a redesign)" if unreachable else
+              f"{len(plan)} setup{'s' if len(plan) != 1 else ''}: " + ", ".join(f"{p['direction']} ({p['features']} features)" for p in plan))
+    check("setups", status, detail, unreachable)
+    checks[-1]["plan"] = plan
     return checks
 
 
-def sheet_checks(solid, path: Path, thickness: float | None) -> list[dict[str, Any]]:
+DIRECTIONS = {"+Z": (0, 0, 1), "-Z": (0, 0, -1), "+X": (1, 0, 0), "-X": (-1, 0, 0), "+Y": (0, 1, 0), "-Y": (0, -1, 0)}
+
+
+def plan_setups(solid, cylinders) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Greedy cover of faces and holes by tool directions. A flat face is cut from a direction it faces; a wall
+    parallel to the tool is side-milled from any direction along it; a hole is drilled along its axis."""
+    from build123d import GeomType, Vector
+
+    features: list[tuple[str, set[str]]] = []
+    for index, face in enumerate(solid.faces()):
+        if face.geom_type != GeomType.PLANE:
+            continue
+        normal = face.normal_at(face.center())
+        reach = {name for name, d in DIRECTIONS.items() if normal.dot(Vector(*d)) > 0.01}
+        walls = {name for name, d in DIRECTIONS.items() if abs(normal.dot(Vector(*d))) <= 0.01}
+        features.append((f"face {index} at {_round(face.center())}", reach | walls))
+    for face, radius, direction, sweep, _ in cylinders:
+        if sweep >= 359:
+            reach = {name for name, d in DIRECTIONS.items() if abs(abs(direction.dot(Vector(*d))) - 1) < 1e-3}
+            features.append((f"hole d{2 * radius:.3g} at {_round(face.center())}", reach))
+    unreachable = [{"feature": name} for name, reach in features if not reach]
+    remaining = [reach for _, reach in features if reach]
+    plan = []
+    while remaining:
+        best = max(DIRECTIONS, key=lambda d: (sum(d in reach for reach in remaining), d == "+Z"))
+        plan.append({"direction": best, "features": sum(best in reach for reach in remaining)})
+        remaining = [reach for reach in remaining if best not in reach]
+    return plan, unreachable
+
+
+def sheet_checks(solid, path: Path, thickness: float | None, k_factor: float = 0.44) -> list[dict[str, Any]]:
     from printcheck import load_parts, ray_hits, triangle_geometry
 
     checks: list[dict[str, Any]] = []
@@ -166,10 +209,66 @@ def sheet_checks(solid, path: Path, thickness: float | None) -> list[dict[str, A
              if sweep < 359 and length > thickness and r < thickness - 1e-6]
     check("tight_bends", "warn" if bends else "pass",
           f"{len(bends)} inside bend radii under the thickness (cracking risk)" if bends else "inside bend radii >= thickness", bends)
+
+    inner = [(face, r, direction, sweep) for face, r, direction, sweep, length in cylinders if sweep < 359 and length > thickness]
+    holes = [(face, r) for face, r, _, sweep, _ in cylinders if sweep >= 359]
+    close = []
+    for hole, hole_r in holes:
+        for bend, bend_r, _, _ in inner:
+            gap = hole.distance_to(bend)
+            if gap < 2 * thickness + bend_r - 1e-6:
+                close.append({"hole_at_mm": _round(hole.center()), "bend_at_mm": _round(bend.center()),
+                              "distance_mm": round(gap, 2), "minimum_mm": round(2 * thickness + bend_r, 2)})
+    check("hole_to_bend", "warn" if close else "pass",
+          f"{len(close)} holes closer to a bend than 2 x thickness + bend radius" if close else "holes clear of bends", close)
+    checks.append(flat_blank(solid, inner, thickness, k_factor))
     return checks
 
 
-def dfm(path: Path, process: str, tool_radius: float = 1.5, thickness: float | None = None) -> dict[str, Any]:
+def flat_blank(solid, inner, thickness: float, k_factor: float) -> dict[str, Any]:
+    """Developed blank for bends about one shared axis: the mid-surface length from the cross-section area,
+    corrected from k = 0.5 to the given K-factor per bend."""
+    from build123d import Plane, section
+
+    result = {"name": "flat_blank", "evidence": [], "k_factor": k_factor}
+    if not inner:
+        return {**result, "status": "pass", "detail": "no bends: the part is its own blank"}
+    axis = inner[0][2]
+    if any(abs(abs(direction.dot(axis)) - 1) > 1e-3 for _, _, direction, _ in inner):
+        return {**result, "status": "warn", "detail": "bends about different axes: unfold it in a sheet-metal CAD tool"}
+    box = solid.bounding_box()
+    centre = box.center()
+    extents = [v.X * axis.X + v.Y * axis.Y + v.Z * axis.Z for v in solid.vertices()]
+    lo, hi = min(extents), max(extents)
+    width = hi - lo
+    areas = []
+    for fraction in (0.13, 0.29, 0.47, 0.61, 0.83):
+        origin = centre + axis * ((lo + fraction * width) - centre.dot(axis))
+        try:
+            areas.append(section(solid, Plane(origin=origin, z_dir=axis)).area)
+        except Exception:  # noqa: BLE001 - a section that misses is just skipped
+            continue
+    if not areas:
+        return {**result, "status": "warn", "detail": "could not section the part across its bends"}
+    area = max(areas)  # a section through a hole is smaller
+    mid_length = area / thickness
+    bend_list = []
+    correction = 0.0
+    for face, radius, _, sweep in inner:
+        angle = math.radians(sweep)
+        allowance = angle * (radius + k_factor * thickness)
+        deduction = 2 * (radius + thickness) * math.tan(angle / 2) - allowance if sweep < 179 else None
+        correction += (k_factor - 0.5) * thickness * angle
+        bend_list.append({"at_mm": _round(face.center()), "angle_deg": round(sweep, 2), "inside_radius_mm": round(radius, 3),
+                          "bend_allowance_mm": round(allowance, 3), "bend_deduction_mm": None if deduction is None else round(deduction, 3)})
+    length = mid_length + correction
+    prismatic = max(areas) - min(areas) < 1e-3 * max(areas) + 1e-6
+    note = "" if prismatic else "; sections differ along the bend axis (holes or notches), so the blank is the outer rectangle"
+    return {**result, "status": "pass", "detail": f"blank {length:.2f} x {width:.2f} mm, {len(bend_list)} bends{note}",
+            "length_mm": round(length, 3), "width_mm": round(width, 3), "thickness_mm": round(thickness, 3), "bends": bend_list}
+
+
+def dfm(path: Path, process: str, tool_radius: float = 1.5, thickness: float | None = None, k_factor: float = 0.44) -> dict[str, Any]:
     from build123d import import_step
 
     from inspect_step import leaf_parts
@@ -178,7 +277,7 @@ def dfm(path: Path, process: str, tool_radius: float = 1.5, thickness: float | N
     report = {"file": str(path), "process": process, "parts": []}
     for index, part in enumerate(parts):
         for solid in part.solids():
-            checks = cnc_checks(solid, tool_radius) if process == "cnc" else sheet_checks(solid, path, thickness)
+            checks = cnc_checks(solid, tool_radius) if process == "cnc" else sheet_checks(solid, path, thickness, k_factor)
             report["parts"].append({"name": getattr(part, "label", "") or f"part {index + 1}", "checks": checks})
     statuses = [c["status"] for p in report["parts"] for c in p["checks"]]
     report["status"] = "fail" if "fail" in statuses else ("warn" if "warn" in statuses else "pass")
@@ -191,9 +290,10 @@ def main() -> int:
     parser.add_argument("--process", choices=("cnc", "sheet"), required=True)
     parser.add_argument("--tool-radius", type=float, default=1.5, help="smallest end mill radius, mm (cnc)")
     parser.add_argument("--thickness", type=float, help="sheet thickness, mm (sheet; default: measured)")
+    parser.add_argument("--k-factor", type=float, default=0.44, help="sheet: neutral-axis position for the flat blank (0.3-0.5)")
     parser.add_argument("--out", type=Path, help="also write the JSON report here")
     args = parser.parse_args()
-    report = dfm(args.step, args.process, args.tool_radius, args.thickness)
+    report = dfm(args.step, args.process, args.tool_radius, args.thickness, args.k_factor)
     text = json.dumps(report, indent=2)
     if args.out:
         args.out.write_text(text + "\n", encoding="utf-8")
